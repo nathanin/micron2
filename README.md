@@ -4,8 +4,8 @@
 
 *****  
 
-- [x] Segmentation (via StarDist) :watermelon:
-- [ ] Single cell clustering
+- [x] [Segmentation](#segmentation) (via StarDist) :watermelon:
+- [ ] [Single cell clustering](#single-cell-clustering)
 - [ ] Niche detection
 - [ ] Spatial statistics
 - [ ] Graph analysis
@@ -19,3 +19,13 @@ With paired scSeq :test_tube::dna:
 
 *****
 
+## Sub-goals
+
+### Segmentation
+- [X] pull data from images and perform statistics on these data quickly
+- [ ] data loader for segmented data focusing on cells, tracking location and cell_ids
+
+### Single cell clustering
+- [X] cluster with normalized intensity values
+- [ ] cluster with morphology
+- [ ] cluster with morphology + staining
