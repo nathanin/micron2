@@ -1,6 +1,6 @@
 # Micron 2 :microscope:
 
-< colorful picture goes here >
+**< colorful picture goes here >**
 
 *****  
 
@@ -29,3 +29,9 @@ With paired scSeq :test_tube::dna:
 - [X] cluster with normalized intensity values
 - [ ] cluster with morphology
 - [ ] cluster with morphology + staining
+
+
+*****
+#### Environment
+
+Docker: `rapidsai/rapidsai:0.16-cuda10.1-runtime-ubuntu16.04-py3.8`

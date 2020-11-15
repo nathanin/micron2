@@ -49,7 +49,7 @@ def load_dataset(fpath, use_channels=['DAPI', 'CD45', 'PanCytoK'], verbose=False
 
 
 def process_channels(*x):
-  #x = [x_ / tf.reduce_max(x_) for x_ in x]
+  # x = [tf.cast(x_ / 255, tf.uint8) for x_ in x]
   x = tf.stack(x, axis=-1)
   #x = x  / tf.reduce_max(x)
   return x
