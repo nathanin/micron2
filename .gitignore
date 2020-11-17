@@ -1,0 +1,12 @@
+*.h5ad
+*.hdf5
+*.png
+*.pdf
+*.svg
+*.jpg
+*.npy
+*.npz
+*.pkl
+*.joblib
+*/__pycache__/*
+micron2.egg-info
