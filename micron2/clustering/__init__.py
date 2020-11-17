@@ -1,3 +1,4 @@
 from .model import Autoencoder
-from .cluster_ae import train_loop
-from .cluster_simclr import train_loop_simCLR
+from .embedding_ae import train_loop
+from .embedding_simclr import train_AE_simCLR
+from .utils import *

@@ -47,7 +47,7 @@ class Autoencoder(tf.keras.Model):
       z = getattr(self, f'{name}_{j}')(z)
     return z
     
-  def call(self, x):
+  def call(self, x, return_g=False):
     x1 = self.conv_1(x)
     x2 = self.conv_2(x1)
     
@@ -56,12 +56,17 @@ class Autoencoder(tf.keras.Model):
     x2 = self.apply_upsample(x2, name='up_small')
 
     xout = tf.reduce_mean([x1, x2], axis=0)
-    return xout  
+    xout = tf.image.resize_with_crop_or_pad(xout, x.shape[1], x.shape[2])
+    if return_g:
+      g = self.g_fn(tf.reduce_mean(x2, axis=[1,2]))
+      return xout, g
+    else:
+      return xout  
   
   def encode_g(self, x):
     if not self.g_network:
       raise ValueError('Network not instantiated with a G_fn. Use Autoencoder(g_network=True)')
-      reutrn None
+
     # Apply g function for simclr
     x = self.conv_1(x)
     x = self.conv_2(x)
