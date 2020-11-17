@@ -52,10 +52,10 @@ class Autoencoder(tf.keras.Model):
     x2 = self.conv_2(x1)
     
     # Two parallel upsampling paths
-    x1 = self.apply_upsample(x1, name='up_large')
-    x2 = self.apply_upsample(x2, name='up_small')
+    x1up = self.apply_upsample(x1, name='up_large')
+    x2up = self.apply_upsample(x2, name='up_small')
 
-    xout = tf.reduce_mean([x1, x2], axis=0)
+    xout = tf.reduce_mean([x1up, x2up], axis=0)
     xout = tf.image.resize_with_crop_or_pad(xout, x.shape[1], x.shape[2])
     if return_g:
       g = self.g_fn(tf.reduce_mean(x2, axis=[1,2]))

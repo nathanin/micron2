@@ -9,7 +9,7 @@ import tqdm.auto as tqdm
 
 
 # Normal training -- autoencoder only
-def train_loop(dataset, model):
+def train_AE(dataset, model):
   mse_fn = tf.keras.losses.MeanSquaredError()
   optim = tf.keras.optimizers.Adam(learning_rate = 1e-4)
 

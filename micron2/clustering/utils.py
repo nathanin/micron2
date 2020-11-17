@@ -5,8 +5,17 @@ import numpy as np
 from sklearn.neighbors import kneighbors_graph
 from matplotlib import pyplot as plt
 
+try:
+  import cudf
+  import cugraph
+  from cuml.neighbors import NearestNeighbors
+  import cupy as cp
+except:
+  print('Failed to import GPU tools. Fast NN will not be possible.')
+
 __all__ = [
   'cluster_leiden',
+  'cluster_leiden_cu',
   'run_tsne',
   'plot_embedding'
 ]
@@ -24,9 +33,31 @@ def cluster_leiden(features, neighbors=10, resolution=0.6, n_jobs=8):
   return groups
 
 
+def cluster_leiden_cu(features, neighbors=10, resolution=0.6  ):
+  X_cudf = cudf.DataFrame(features)
+  model = NearestNeighbors(n_neighbors=neighbors)
+  model.fit(features)
+
+  kn_graph = model.kneighbors_graph(X_cudf)
+  offsets = cudf.Series(kn_graph.indptr)
+  indices = cudf.Series(kn_graph.indices)
+
+  G = cugraph.Graph()
+  G.from_cudf_adjlist(offsets, indices, None)
+  parts, mod_score = cugraph.leiden(G, resolution=resolution)
+  groups = cp.asnumpy(parts['partition'].values)
+
+  groups = np.array([f'{c:02}' for c in groups])
+  # groups = np.array([f'{c:02}' for c in groups], dtype='S')
+  return groups
+
+
 def run_tsne(features, train_size=0.2, n_jobs=8):
   """
   Run t-SNE dimensionality reduction on features
+
+  I think we can do initial training on a subset of the samples
+  then apply the model in inference-mode to the rest.
 
   Args:
     features (np.float32): ndarray (n_cells x n_features)

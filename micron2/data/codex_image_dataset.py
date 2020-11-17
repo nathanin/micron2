@@ -6,7 +6,7 @@ import h5py
 
 def load_as_anndata(h5data, with_images=True, obsm=None):
   """
-  Load a codex image dataset as an AnnData object
+  Load a codex image dataset into an AnnData object
 
   Store the mean intensity values as vars
 

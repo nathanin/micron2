@@ -78,7 +78,7 @@ def train_AE_simCLR(dataset, model, crop_size=48):
             #.apply(tf.data.experimental.prefetch_to_device("/gpu:0")))
   """
   mse_fn = tf.keras.losses.MeanSquaredError()
-  optim = tf.keras.optimizers.Adam(learning_rate = 1e-4)
+  optim = tf.keras.optimizers.Adam(learning_rate = 1e-3)
   simclr_optim = tf.keras.optimizers.Adam(learning_rate = 1e-4)
   pbar = tqdm.tqdm(enumerate(dataset))
   losses, sc_losses = [], []
@@ -104,13 +104,18 @@ def train_AE_simCLR(dataset, model, crop_size=48):
     batch_in = perturb_x(batch, crop_size=crop_size)
     batch_p = perturb_x(batch, crop_size=crop_size)
 
+    batch_in = tf.concat([batch_in, batch_p], axis=0)
+
     with tf.GradientTape(persistent=True) as tape:
-      xout1, g1 = model(batch_in, return_g=True)
-      xout2, g2 = model(batch_p, return_g=True)
-      
-      mse_loss = mse_fn(tf.concat([batch_in, batch_p], axis=0), 
-                        tf.concat([xout1, xout2], axis=0))
-      l_simclr = simclr_loss_fn(tf.concat([g1, g2], axis=0), tau=0.1)
+      xout, g = model(batch_in, return_g=True)
+      mse_loss = mse_fn(batch_in, xout)
+      l_simclr = simclr_loss_fn(g, tau=0.1)
+
+      # xout1, g1 = model(batch_in, return_g=True)
+      # xout2, g2 = model(batch_p, return_g=True)
+      # mse_loss = mse_fn(tf.concat([batch_in, batch_p], axis=0), 
+      #                   tf.concat([xout1, xout2], axis=0))
+      # l_simclr = simclr_loss_fn(tf.concat([g1, g2], axis=0), tau=0.1)
         
     losses.append(mse_loss.numpy())
     sc_losses.append(l_simclr.numpy())
@@ -129,7 +134,8 @@ def train_AE_simCLR(dataset, model, crop_size=48):
       m_loss = np.mean(losses)
       m_sc_losses = np.mean(sc_losses)
       #pbar.set_description(f'mse_loss = {np.mean(losses):3.5e} simclr_loss = {np.mean(sc_losses):3.5e}')
-      pbar.set_description(f'd(mse_loss) = {prev_loss-m_loss:3.5e}\td(simclr_loss) = {prev_sc_loss-m_sc_losses:3.5e}')
+      pbar.set_description(f'd(mse_loss) = {prev_loss-m_loss:3.5e}\t' +\
+                           f'd(simclr_loss) = {prev_sc_loss-m_sc_losses:3.5e}')
       prev_loss = np.mean([prev_loss, m_loss])
       prev_sc_loss = np.mean([prev_sc_loss, m_sc_losses])
       losses, sc_losses = [], []

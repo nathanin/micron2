@@ -1,14 +1,18 @@
 # Micron 2 :microscope:
 
-**< colorful picture goes here >**
+<p align="center">
+  <img width="500" height="300" src="vis/bokeh_plot.png">
+</p>
 
 *****  
 
 - [x] [Segmentation](#segmentation) (via StarDist) :watermelon:
+- [x] [CODEX cell dataset](#data-class)
 - [x] [Single cell clustering](#single-cell-clustering)
-- [ ] Niche detection
+- [ ] [Niche detection](#niche-detection)
 - [ ] Spatial statistics
 - [ ] Graph analysis
+- [ ] [Interactive visualization](#interactive-visualization)
 
 
 ******
@@ -25,23 +29,35 @@ See [snippets](#snippets) for usage.
 
 ### Data class
 - [x] store processed image data + nuclear masks + coordinates in hdf5
-- [ ] short term: wrapper to use AnnData and store a hook to an open cell image dataset
+- [x] short term: wrapper to use AnnData and store a hook to an open cell image dataset
 - [ ] long term: extend the AnnData class
 
 ### Segmentation
 - [x] pull data from images and perform statistics on these data quickly
-- [ ] data loader for segmented data focusing on cells, tracking location and cell_ids
+- [x] data loader for segmented data focusing on cells, tracking location and cell_ids
 
 ### Single cell clustering
 - [x] cluster with normalized intensity values
-- [ ] cluster with morphology
-- [ ] cluster with morphology + staining
+- [x] cluster with morphology
+- [x] cluster with morphology + staining
 
+### Niche detection
+- [ ] nearest neighbors graph (distance cutoff, k-nearest)
+- [ ] set embedding 
+- [ ] niche stats: cell type co-occurance, mean type-to-type distance 
+
+### Interactive visualization
+- [x] Bokeh library for zoomable plots in-notebook
+- [ ] Click to show nucleus image
+- [ ] Select area and export images to file
+- [ ] Select area and annotate
+- [ ] Composable intensity plot
 
 *****
 ## Environment
 
-Docker: `rapidsai/rapidsai:0.16-cuda10.1-runtime-ubuntu16.04-py3.8`
+<!-- Docker: `rapidsai/rapidsai:0.16-cuda10.1-runtime-ubuntu16.04-py3.8` -->
+Conda.
 
 Note: to use leidenlag install the proper igraph package from pip: `pip install python-igraph`
 
