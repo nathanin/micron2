@@ -8,28 +8,16 @@ import pandas as pd
 
 from bokeh.io import curdoc
 from bokeh.layouts import column, layout
-from bokeh.models import ColumnDataSource, Div, Select, Slider, TextInput
+from bokeh.models import ColumnDataSource, Button, Div, Select, Slider, TextInput, MultiChoice
 from bokeh.plotting import figure
 # from bokeh.sampledata.movies_data import movie_path
 
+# curdoc().theme = 'caliber'
 
-curdoc().theme = 'caliber'
+# Use RGB color blending to show signal intensities as gradients of solid colors
+def blend_colors():
+  pass
 
-# conn = sql.connect(movie_path)
-# query = open(join(dirname(__file__), 'query.sql')).read()
-# movies = psql.read_sql(query, conn)
-
-
-## All this is just setting up the data frame
-# movies["color"] = np.where(movies["Oscars"] > 0, "orange", "grey")
-# movies["alpha"] = np.where(movies["Oscars"] > 0, 0.9, 0.25)
-# movies.fillna(0, inplace=True)  # just replace missing values with zero
-# movies["revenue"] = movies.BoxOffice.apply(lambda x: '{:,d}'.format(int(x)))
-
-# with open(join(dirname(__file__), "razzies-clean.csv")) as f:
-#     razzies = f.read().splitlines()
-# movies.loc[movies.imdbID.isin(razzies), "color"] = "purple"
-# movies.loc[movies.imdbID.isin(razzies), "alpha"] = 0.9
 
 ad = sc.read_h5ad("notebooks/tests/dataset.h5ad")
 print(f'\n\nVisualizing {ad.shape[0]} cells\n\n')
@@ -42,7 +30,7 @@ color_map = {k: v for k, v in zip(np.unique(ad.obs.mean_leiden), ad.uns['mean_le
 data['color'] = [color_map[g] for g in ad.obs.mean_leiden]
 data['active_color'] = [color_map[g] for g in ad.obs.mean_leiden]
 
-background_color = '#d4d4d4'
+background_color = '#636363'
 
 axis_map = {
   "coordinates_1": "coordinates_1",
@@ -52,72 +40,45 @@ axis_map = {
 desc = Div(text=open(join(dirname(__file__), "description.html")).read(), sizing_mode="stretch_width")
 
 ## Create Input controls
-# reviews = Slider(title="Minimum number of reviews", value=80, start=10, end=300, step=10)
-# min_year = Slider(title="Year released", start=1940, end=2014, value=1970, step=1)
-# max_year = Slider(title="End Year released", start=1940, end=2014, value=2014, step=1)
-# oscars = Slider(title="Minimum number of Oscar wins", start=0, end=4, value=0, step=1)
-# boxoffice = Slider(title="Dollars at Box Office (millions)", start=0, end=800, value=0, step=1)
+all_clusters = list(np.unique(ad.obs.mean_leiden))
+hl_cluser_multichoice = MultiChoice(title='Focus clusters', value=[], options=all_clusters)
 
-# size = Select(title="Cluster", value="DAPI",
-#                  options=ad.var_names.tolist()))
-# color = Select(title="Cluster", value="DAPI",
-#                  options=ad.var_names.tolist()))
+## Set up a way to edit the displayed colors
+# edit_cluster_colors = MultiChoice(title='Focus clusters', value=[], options=all_clusters)
 
-n_highlight = 4
-hl_cluster_select = []
-for j in range(n_highlight):
-  hl_cluster_select.append( Select(title=f"Focus Cluster {j}", value="All",
-                 options=list(np.unique(ad.obs.mean_leiden))+['All'])
-  )
-# hl_cluster_1 = Select(title="Focus Cluster 1", value="All",
-#                  options=list(np.unique(ad.obs.mean_leiden)))
-# hl_cluster_2 = Select(title="Focus Cluster 2", value="All",
-#                  options=list(np.unique(ad.obs.mean_leiden)))
-
-
-## Options for when we have cell type annotations
-# genre = Select(title="Cell type", value="All",
-#                options=list(np.unique(ad.obs.CellType)))
-# cell_type = TextInput(title="Cell type name contains")
-# director = TextInput(title="Director name contains")
-# cast = TextInput(title="Cast names contains")
-x_axis = Select(title="X Axis", options=sorted(axis_map.keys()), value="coordinates_1")
-y_axis = Select(title="Y Axis", options=sorted(axis_map.keys()), value="coordinates_2")
+## 
 
 # Create Column Data Source that will be used by the plot
-source_bg = ColumnDataSource(data=dict(x=[], y=[]))
-source_fg = ColumnDataSource(data=dict(x=[], y=[], color=[]))
+source_bg = ColumnDataSource(data=dict(x=[], y=[], mean_leiden=[], z_leiden=[]))
+source_fg = ColumnDataSource(data=dict(x=[], y=[], mean_leiden=[], z_leiden=[], color=[]))
 
-# TOOLTIPS=[
-#     ("Title", "@title"),
-#     ("Year", "@year"),
-#     ("$", "@revenue")
-# ]
-# p = figure(plot_height=600, plot_width=700, title="", toolbar_location=None, 
-#            tooltips=TOOLTIPS, sizing_mode="scale_both")
-# p.circle(x="x", y="y", source=source, size=7, color="color", line_color=None, fill_alpha="alpha")
 
+# Create the figure
 # Draw a canvas with an appropriate aspect ratio
+TOOLTIPS=[
+    ("Mean cluster", "@mean_leiden"),
+    ("Morph cluster", "@z_leiden"),
+]
 dx = np.abs(data.coordinates_1.max() - data.coordinates_1.min())
 dy = np.abs(data.coordinates_2.max() - data.coordinates_2.min())
 width = 700
 height = int(width * (dy/dx))
-
 p = figure(plot_height=height, plot_width=width, title="", toolbar_location='left', 
-           tools='pan,wheel_zoom,reset,save', sizing_mode="scale_both",
-           output_backend='webgl')
+           tools='pan,wheel_zoom,reset,hover,lasso_select,save', sizing_mode="scale_both",
+           tooltips=TOOLTIPS, output_backend='webgl')
 
-p.circle(x="x", y="y", source=source_bg, radius=7, color=background_color, line_color=None)
-p.circle(x="x", y="y", source=source_fg, radius=15, color="active_color", line_color=None)
+# Keep a reference to the foreground set
+r = p.circle(x="x", y="y", source=source_fg, radius=10, color="active_color", line_color=None)
+p.circle(x="x", y="y", source=source_bg, radius=5, color=background_color, line_color=None)
+p.xaxis.axis_label = 'coordinates_1'
+p.yaxis.axis_label = 'coordinates_2'
 
 
+# Define actions for our buttons
 def select_cells():
+    hl_cluster_vals = hl_cluser_multichoice.value
 
-    hl_cluster_vals = [
-      hl_cluster.value for hl_cluster in hl_cluster_select
-    ]
-
-    if ['All']*len(hl_cluster_vals) == hl_cluster_vals:
+    if len(hl_cluster_vals) == 0:
       hl_idx = np.ones(data.shape[0], dtype='bool')
     else:
       hl_idx = data.mean_leiden.isin(hl_cluster_vals)
@@ -130,26 +91,43 @@ def select_cells():
 
 def update():
     df_fg, df_bg = select_cells()
-    x_name = axis_map[x_axis.value]
-    y_name = axis_map[y_axis.value]
-
-    p.xaxis.axis_label = x_axis.value
-    p.yaxis.axis_label = y_axis.value
+    # x_name = axis_map[x_axis.value]
+    # y_name = axis_map[y_axis.value]
+    # p.xaxis.axis_label = x_axis.value
+    # p.yaxis.axis_label = y_axis.value
 
     p.title.text = "Highlighting %d cells" % len(df_fg)
     source_fg.data = dict(
-        x=df_fg[x_name],
-        y=df_fg[y_name],
+        x=df_fg['coordinates_1'],
+        y=df_fg['coordinates_2'],
+        mean_leiden=df_fg['mean_leiden'],
+        z_leiden=df_fg['z_leiden'],
         active_color=df_fg["active_color"],
     )
     source_bg.data = dict(
-        x=df_bg[x_name],
-        y=df_bg[y_name],
+        x=df_bg['coordinates_1'],
+        y=df_bg['coordinates_2'],
+        mean_leiden=df_bg['mean_leiden'],
+        z_leiden=df_bg['z_leiden'],
     )
 
-controls = hl_cluster_select+[x_axis, y_axis]
+
+# Controls that will update the plotting area
+controls = [
+  hl_cluser_multichoice, 
+  # x_axis, 
+  # y_axis
+]
+
 for control in controls:
     control.on_change('value', lambda attr, old, new: update())
+
+# Add a clear button for multiselect
+def set_cleared_focus(*args):
+  hl_cluser_multichoice.value = []
+clear_button = Button(label='Clear focused cells', button_type='success')
+clear_button.on_click(set_cleared_focus)
+controls.append(clear_button)
 
 inputs = column(*controls, width=320, height=1000)
 inputs.sizing_mode = "fixed"
@@ -158,6 +136,7 @@ l = layout([
     [inputs, p],
 ], sizing_mode="scale_both")
 
+print('Populating initial data')
 update()  # initial load of the data
 
 curdoc().add_root(l)

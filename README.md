@@ -1,8 +1,6 @@
-# Micron 2 :microscope:
+# Micron<sup>2</sup> :microscope:
 
-<p align="center">
-  <img width="500" height="300" src="vis/bokeh_plot.png">
-</p>
+![codex](vis/bokeh_plot.png)
 
 *****  
 
@@ -10,7 +8,7 @@
 - [x] [CODEX cell dataset](#data-class)
 - [x] [Single cell clustering](#single-cell-clustering)
 - [ ] [Niche detection](#niche-detection)
-- [ ] Spatial statistics
+- [ ] [Spatial statistics](#spaital-statistics)
 - [ ] Graph analysis
 - [ ] [Interactive visualization](#interactive-visualization)
 
@@ -46,12 +44,19 @@ See [snippets](#snippets) for usage.
 - [ ] set embedding 
 - [ ] niche stats: cell type co-occurance, mean type-to-type distance 
 
+### Spatial statistics
+- [ ] freuqency of neighbor celltypes
+- [ ] channel intensities compare neighbors vs non-neighbors for focused celltype
+- [ ] fisher test for co-occurance of celltypes within spatial niches
+
 ### Interactive visualization
-- [x] Bokeh library for zoomable plots in-notebook
+- [x] [Bokeh](https://bokeh.org/) for interactive data vis
 - [ ] Click to show nucleus image
 - [ ] Select area and export images to file
 - [ ] Select area and annotate
 - [ ] Composable intensity plot
+- [ ] Dual panes with cells on one side and select a square region to show it
+- [ ] Focus cluster + neighbors --- histogram of neighbor cell types
 
 *****
 ## Environment
