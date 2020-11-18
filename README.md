@@ -1,6 +1,6 @@
 # Micron<sup>2</sup> :microscope:
 
-![codex](vis/bokeh_plot.png)
+![data](vis/bokeh_plot.png)
 
 *****  
 
@@ -36,7 +36,6 @@ See [snippets](#snippets) for usage.
 
 ### Single cell clustering
 - [x] cluster with normalized intensity values
-- [x] cluster with morphology
 - [x] cluster with morphology + staining
 
 ### Niche detection
