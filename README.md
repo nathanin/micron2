@@ -6,7 +6,7 @@
 
 - [x] [Segmentation](#segmentation) (via StarDist) :watermelon:
 - [x] [CODEX cell dataset](#data-class)
-- [x] [Single cell clustering](#single-cell-clustering)
+- [ ] [Single cell clustering](#single-cell-clustering)
 - [ ] [Niche detection](#niche-detection)
 - [ ] [Spatial statistics](#spaital-statistics)
 - [ ] Graph analysis
@@ -18,6 +18,7 @@
 With paired scSeq :test_tube::dna:
 - [ ] Spatial constraints on interaction analysis (imaging --> scSeq)
 - [ ] Interacting cells co-occurance frequency (scSeq --> imaging)
+- [ ] Project RNA profiles into CODEX cells
 
 See [snippets](#snippets) for usage.
 
@@ -27,8 +28,8 @@ See [snippets](#snippets) for usage.
 
 ### Data class
 - [x] store processed image data + nuclear masks + coordinates in hdf5
-- [x] short term: wrapper to use AnnData and store a hook to an open cell image dataset
-- [ ] long term: extend the AnnData class
+- [x] <u>short term</u>: wrapper to use AnnData and store a hook to an open cell image dataset
+- [ ] <u>long term</u>: extend the AnnData class
 
 ### Segmentation
 - [x] pull data from images and perform statistics on these data quickly
@@ -37,34 +38,39 @@ See [snippets](#snippets) for usage.
 ### Single cell clustering
 - [x] cluster with normalized intensity values
 - [x] cluster with morphology + staining
+- [ ] (heirarchical or at-once) semi-supervised transfer of cell type labels 
 
 ### Niche detection
-- [ ] nearest neighbors graph (distance cutoff, k-nearest)
-- [ ] set embedding 
-- [ ] niche stats: cell type co-occurance, mean type-to-type distance 
+- [x] k-nearest neighbors graph
+- [ ] set embedding with neighborhoods as sets 
 
 ### Spatial statistics
-- [ ] freuqency of neighbor celltypes
+- [x] freuqency of neighbor celltypes
 - [ ] channel intensities compare neighbors vs non-neighbors for focused celltype
 - [ ] fisher test for co-occurance of celltypes within spatial niches
+- [ ] mean type-to-type distances
+- [ ] spatial staining intensity correlation
 
 ### Interactive visualization
 - [x] [Bokeh](https://bokeh.org/) for interactive data vis
-- [ ] Click to show nucleus image
-- [ ] Select area and export images to file
-- [ ] Select area and annotate
-- [ ] Composable intensity plot
-- [ ] Dual panes with cells on one side and select a square region to show it
-- [ ] Focus cluster + neighbors --- histogram of neighbor cell types
+- [ ] click to show nucleus image
+- [ ] histogram of image being actively edited
+- [ ] select area and export images to file
+- [ ] select area and annotate
+- [x] composable intensity plot
+- [x] dual panes with cells on one side and select a square region to show it
+- [ ] focus cluster + neighbors --- histogram of neighbor cell types/integrate with spatial stats
 
 *****
 ## Environment
 
-<!-- Docker: `rapidsai/rapidsai:0.16-cuda10.1-runtime-ubuntu16.04-py3.8` -->
-Conda.
+[Miniconda](https://docs.conda.io/en/latest/miniconda.html), 
+[RAPIDS](https://rapids.ai/),
+[TensorFlow 2](https://www.tensorflow.org/),
+[Bokeh](https://bokeh.org/),
+[Scanpy](https://scanpy.readthedocs.io/en/stable/)
 
-Note: to use leidenlag install the proper igraph package from pip: `pip install python-igraph`
-
+Note: to use the `leidenlag` package install the proper igraph package from pip: `pip install python-igraph`
 
 *****
 ## Snippets
