@@ -45,9 +45,8 @@ def set_active_channel(event, shared_variables, widgets, figure_sources, figures
   widgets['focus_channel'].label = f'Edit {ac} image'
   widgets['color_picker'].title = f'{ac} color'
   widgets['color_picker'].color = rgb2hex(shared_variables['channel_colors'][ac])
-  widgets['color_slider'].title = f'{ac} saturation'
-  widgets['color_slider'].value_throttled = shared_variables['saturation_vals'][ac]
-  widgets['color_slider'].value = shared_variables['saturation_vals'][ac]
+  widgets['color_saturation'].title = f'{ac} saturation'
+  widgets['color_saturation'].value = shared_variables['saturation_vals'][ac]
 
   shared_variables['use_channels'] = widgets['channels_select'].value
   update_edit_hist(shared_variables, widgets, figure_sources, figures)
@@ -63,12 +62,15 @@ def maybe_pull(use_channels, active_raw_images, image_sources, bbox):
       need_to_pull = True
       break
         
+  use_files = [image_sources[c] for c in use_channels]
   if need_to_pull:
     logger.info(f'Pulling bbox: {bbox} from {use_channels}')
-    use_files = [image_sources[c] for c in use_channels]
     images = get_images(use_files, bbox)
   else:
-    images = np.dstack([active_raw_images[c] for c in use_channels])
+    try:
+      images = np.dstack([active_raw_images[c] for c in use_channels])
+    except:
+      images = get_images(use_files, bbox)
 
   for i, c in enumerate(use_channels):
     active_raw_images[c] = images[:,:,i].copy()
@@ -125,22 +127,27 @@ def update_image_plot(shared_variables, widgets, figure_sources, figures):
                                        'dh': [1],}
 
 
-def update_bbox(inds, shared_variables):
+def update_bbox(shared_variables):
   bbox = shared_variables['bbox']
   use_channels = shared_variables['use_channels']
   active_raw_images = shared_variables['active_raw_images']
   coords = shared_variables['coords']
 
-  xmin = min(coords[inds,1])
-  xmax = max(coords[inds,1])
-  ymin = min(coords[inds,0])
-  ymax = max(coords[inds,0])
+  box_selection = shared_variables['box_selection']
+
+  xmin = min(coords[box_selection,1])
+  xmax = max(coords[box_selection,1])
+  ymin = min(coords[box_selection,0])
+  ymax = max(coords[box_selection,0])
+
 
   # bbox = [xmin, xmax, ymin, ymax]
   bbox[0] = xmin
   bbox[1] = xmax
   bbox[2] = ymin
   bbox[3] = ymax
+
+  logger.info(f'setting bbox: {bbox}')
 
   # reset active images
   for c in use_channels:

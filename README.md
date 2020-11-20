@@ -54,12 +54,14 @@ See [snippets](#snippets) for usage.
 ### Interactive visualization
 - [x] [Bokeh](https://bokeh.org/) for interactive data vis
 - [ ] click to show nucleus image
-- [ ] histogram of image being actively edited
+- [x] histogram of image being actively edited
 - [ ] select area and export images to file
-- [ ] select area and annotate
+- [ ] select area/cells and annotate
 - [x] composable intensity plot
 - [x] dual panes with cells on one side and select a square region to show it
 - [ ] focus cluster + neighbors --- histogram of neighbor cell types/integrate with spatial stats
+- [ ] widget to gate cells based on bi-variate staining intensity
+
 
 *****
 ## Environment

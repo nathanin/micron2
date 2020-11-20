@@ -53,7 +53,6 @@ def blend_images(images, saturation_vals=None, colors=None):
   for c in range(nc):
     img = images[:,:,c]
     sat_val = saturation_vals[c]
-    print(f'saturating image at value {sat_val}')
     img[img > sat_val] = sat_val
     img = img / sat_val
     

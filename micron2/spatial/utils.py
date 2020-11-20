@@ -11,10 +11,11 @@ __all__ = [
   'pull_neighbors'
 ]
 
-def get_neighbors(features, return_distances=False):
+def get_neighbors(features, k=5, return_distances=False):
   """
   Args:
     features (np.ndarray): (n_cells x n_features)
+    k (int): number of neighbors
     return_distances (bool): whether to also return distances
     
   Return:
@@ -23,7 +24,8 @@ def get_neighbors(features, return_distances=False):
   """
   
   X_cudf = cudf.DataFrame(features)
-  model = NearestNeighbors(n_neighbors=6)
+  # the reference points are included, so add 1 to k
+  model = NearestNeighbors(n_neighbors=k+1)
   model.fit(features)
 
   # kn_graph = model.kneighbors_graph(X_cudf)
