@@ -1,4 +1,5 @@
 *.h5ad
+*.pyc
 *.hdf5
 *.png
 *.pdf

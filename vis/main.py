@@ -9,28 +9,21 @@ from bokeh.io import curdoc
 from bokeh.layouts import column, row, layout, gridplot
 from bokeh.models import (ColumnDataSource, BoxSelectTool, LassoSelectTool, Button, 
                           Div, Select, Slider, TextInput, MultiChoice, ColorPicker, 
-                          Dropdown)
+                          Dropdown, Span)
 from bokeh.plotting import figure
 
 import seaborn as sns
 from matplotlib.colors import rgb2hex
 
 from micron2.codexutils import get_images, blend_images
+from .selection_ops import (logger, set_dropdown_menu, set_active_channel,
+                            update_image_plot, update_bbox)
 
-
-import logging
-logger = logging.getLogger('leiden')
-logger.setLevel('INFO')
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-sh = logging.StreamHandler()
-sh.setFormatter(formatter)
-logger.addHandler(sh)
-
-# figure and button definitions should live in other files
-# this file is for linking them together and defining ops 
+# from .selection_ops import logger as logg
+# logger = make_logger()
 
 ad = sc.read_h5ad("notebooks/tests/dataset.h5ad")
-print(f'\n\nVisualizing {ad.shape[0]} cells\n\n')
+logger.info(f'Visualizing {ad.shape[0]} cells')
 data = ad.obs.copy()
 data[ad.var_names.tolist()] = pd.DataFrame(ad.X.copy(), index=ad.obs_names, columns=ad.var_names)
 data['coordinates_1'] = ad.obsm['coordinates'][:,0]
@@ -46,56 +39,78 @@ coords[:,1] = -coords[:,1]
 # bbox_pad = 64 # minimum half-size to show when a single cell is selected
 
 background_color = '#636363'
-
-# axis_map = {
-#   "coordinates_1": "coordinates_1",
-#   "coordinates_2": "coordinates_2"
-# }
-
 desc = Div(text=open(join(dirname(__file__), "description.html")).read(), sizing_mode="stretch_width")
 
-## Create Input controls
+
+## -------------------------------------------------------------------
+#                      Shared variables
+## -------------------------------------------------------------------
+
 all_clusters = list(np.unique(ad.obs.mean_leiden))
-hl_cluster_multichoice = MultiChoice(title='Focus clusters', value=[], options=all_clusters)
-
 all_channels = [k for k, i in ad.uns['image_sources'].items()]
-channels_multichoice = MultiChoice(title='Show channels', value=['DAPI'], options=all_channels)
+active_raw_images = {c: None for c in all_channels}
+saturation_vals = {c: 50 for c in all_channels} # TODO config default saturation values
+use_files = [ad.uns['image_sources'][c] for c in ['DAPI']]
 
+channel_colors = np.array(sns.color_palette('Set1', n_colors=len(all_channels)))
+channel_colors = np.concatenate([channel_colors, np.ones((len(all_channels), 1))], axis=1)
+channel_colors = {c: color for c, color in zip(all_channels, channel_colors)}
+
+shared_variables = dict(
+  all_clusters = all_clusters,
+  all_channels = all_channels,
+  bbox = [0,0,0,0],
+  active_raw_images = active_raw_images,
+  saturation_vals = saturation_vals,
+  active_channel = 'DAPI',
+  use_channels = ['DAPI'],
+  channel_colors = channel_colors,
+  nbins = 100,
+  image_sources = ad.uns['image_sources'],
+  background_color = '#636363',
+  coords = coords
+)
+
+# Functions that pull data from somewhere and update data somewhere else
+update_functions = {}
 
 
 ## -------------------------------------------------------------------
 #               Set up a way to edit the displayed colors
 ## -------------------------------------------------------------------
-## Dropdown select button to choose active color
-edit_image_dropdown = Dropdown(label='Edit DAPI image', button_type='primary', menu=['DAPI'])
-def set_dropdown_menu():
-  items = channels_multichoice.value
-  edit_image_dropdown.menu = items
-
 
 ## set up a color picker 
-channel_colors = np.array(sns.color_palette('Set1', n_colors=len(all_channels)))
-channel_colors = np.concatenate([channel_colors, np.ones((len(all_channels), 1))], axis=1)
-print(channel_colors.shape)
-# default_channel_colors = np.concatenate([default_channel_colors, np.
-channel_colors = {c: color for c, color in zip(all_channels, channel_colors)}
 for c in all_channels:
-  print(c, rgb2hex(channel_colors[c]))
-image_colorpicker = ColorPicker(title='DAPI color', width=100, color=rgb2hex(channel_colors['DAPI']))
+  logger.info(f'{c} {rgb2hex(channel_colors[c])}')
+
+widgets = dict(
+  cluster_select = MultiChoice(title='Focus clusters', value=[], options=all_clusters),
+  channels_select = MultiChoice(title='Show channels', value=['DAPI'], options=all_channels),
+
+  ## Select and edit colors
+  focus_channel = Dropdown(label='Edit DAPI image', button_type='primary', menu=['DAPI']),
+  color_picker = ColorPicker(title='DAPI color', width=100, color=rgb2hex(channel_colors['DAPI'])),
+  color_slider = Slider(start=0, end=255, step=1, title='DAPI saturation',                         
+                        width=100, value=100, value_throttled=100),
+  clear_clusters = Button(label='Clear focused cells', button_type='success'),
+  clear_channels = Button(label='Clear image channels', button_type='success'),
+  update_image = Button(label='Update drawing', button_type='success')
+)
 
 
-## set up an intensity slider
-saturation_vals = {c: 255 for c in all_channels}
-image_slider = Slider(start=0, end=255, value=255, step=1, title='DAPI saturation')
 
+## -------------------------------------------------------------------
+#                  Create data sources first
+## -------------------------------------------------------------------
 
-
-## 
-
-# Create Column Data Source that will be used by the scatter plot
-source_bg = ColumnDataSource(data=dict(x=[], y=[], mean_leiden=[], z_leiden=[]))
-source_fg = ColumnDataSource(data=dict(x=[], y=[], mean_leiden=[], z_leiden=[], color=[]))
-
+dummy_data = np.zeros((5,5), dtype=np.uint32)
+figure_sources = dict(
+  scatter_bg = ColumnDataSource(data=dict(x=[], y=[], mean_leiden=[], z_leiden=[])),
+  scatter_fg = ColumnDataSource(data=dict(x=[], y=[], mean_leiden=[], z_leiden=[], color=[])),
+  image_data = ColumnDataSource({'value': [], 'dw': [], 'dh': []}),
+  cluster_hist = ColumnDataSource({'value': [0]*len(all_clusters), 'x': all_clusters}),
+  intensity_hist = ColumnDataSource({'value': [], 'x': []})
+)
 
 ## -------------------------------------------------------------------
 #                  Create the cell scatter figure
@@ -108,7 +123,7 @@ TOOLTIPS=[
 ]
 dx = np.abs(data.coordinates_1.max() - data.coordinates_1.min())
 dy = np.abs(data.coordinates_2.max() - data.coordinates_2.min())
-width = 700
+width = 500
 height = int(width * (dy/dx))
 p = figure(plot_height=height, plot_width=width, title="", toolbar_location='left', 
            tools='pan,wheel_zoom,reset,hover,box_select,lasso_select,save', 
@@ -119,123 +134,83 @@ p.select(BoxSelectTool).select_every_mousemove = False
 p.select(LassoSelectTool).select_every_mousemove = False
 
 # Keep a reference to the foreground set
-r = p.scatter(x="x", y="y", source=source_fg, radius=10, color="active_color", line_color=None)
-p.scatter(x="x", y="y", source=source_bg, radius=5, color=background_color, line_color=None)
-p.xaxis.axis_label = 'coordinates_1'
-p.yaxis.axis_label = 'coordinates_2'
-
-
-# Define actions for our buttons
-def select_cells():
-    hl_cluster_vals = hl_cluster_multichoice.value
-
-    if len(hl_cluster_vals) == 0:
-      hl_idx = np.ones(data.shape[0], dtype='bool')
-    else:
-      hl_idx = data.mean_leiden.isin(hl_cluster_vals)
-
-    hl_data = data[hl_idx]
-    bg_data = data[~hl_idx]
-
-    return hl_data, bg_data
-
-
-def update():
-    df_fg, df_bg = select_cells()
-
-    p.title.text = "Highlighting %d cells" % len(df_fg)
-    source_fg.data = dict(
-        x=df_fg['coordinates_1'],
-        y=df_fg['coordinates_2'],
-        mean_leiden=df_fg['mean_leiden'],
-        z_leiden=df_fg['z_leiden'],
-        active_color=df_fg["active_color"],
-    )
-    source_bg.data = dict(
-        x=df_bg['coordinates_1'],
-        y=df_bg['coordinates_2'],
-        mean_leiden=df_bg['mean_leiden'],
-        z_leiden=df_bg['z_leiden'],
-    )
-
-
-# Pin action functions to controls
-# Controls that will update the plotting area
-hl_cluster_multichoice.on_change('value', lambda attr, old, new: update())
-
-
-
-# Add a clear button for multiselects
-def set_cleared_focus(*args):
-  hl_cluster_multichoice.value = []
-clear_button_focus = Button(label='Clear focused cells', button_type='success')
-clear_button_focus.on_click(set_cleared_focus)
-
-def set_cleared_images(*args):
-  channels_multichoice.value = []
-clear_button_image = Button(label='Clear image channels', button_type='success')
-clear_button_image.on_click(set_cleared_images)
-
+fg_scatter = p.scatter(x="x", y="y", source=figure_sources['scatter_fg'], 
+              radius=12, color="active_color", line_color=None)
+p.scatter(x="x", y="y", source=figure_sources['scatter_bg'], 
+          radius=5, color=background_color, line_color=None)
 
 
 ## -------------------------------------------------------------------
 #                  Create the zoom image figure
 ## -------------------------------------------------------------------
-pimg = figure(plot_height=height, plot_width=int(width/2), title="", toolbar_location='left', 
+pimg = figure(plot_height=height, plot_width=int(width/2), title="", 
+              toolbar_location='left', 
               tools='pan,wheel_zoom,reset,save', 
-              # sizing_mode="scale_both",
-              # tooltips=TOOLTIPS, 
+              match_aspect=True,
               output_backend='webgl')
-img_data = np.random.randint(low=0, high=2**32, size=(512 , 512), dtype=np.uint32)*0
-image_data_source = ColumnDataSource({'value': [img_data]})
-pimg.image_rgba(image='value', source=image_data_source,x=0,y=0,dw=1,dh=1)
-
-
+pimg.image_rgba(image='value', source=figure_sources['image_data'],
+                x=0,y=0,dw='dw',dh='dh')
 
 
 ## -------------------------------------------------------------------
 #                  Create a selection histogram
 ## -------------------------------------------------------------------
-phist = figure(x_range=all_clusters, plot_height=height, plot_width=int(width/2), toolbar_location=None,
+phist = figure(x_range=all_clusters, 
+               title="",
+               x_axis_label='Clusters',
+               y_axis_label='Cells',
+               plot_height=height, 
+               plot_width=int(width/2), 
+               toolbar_location=None,
                output_backend='webgl')
-
-phist_data_source = ColumnDataSource({'value': [0]*len(all_clusters), 'x': all_clusters})
-phist.vbar(x='x', top='value', source=phist_data_source, width=0.9)
+phist.vbar(x='x', top='value',  source=figure_sources['cluster_hist'], width=0.9)
 phist.xgrid.grid_line_color = None
-# phist.y_range_start = 0
 
 
 ## -------------------------------------------------------------------
 #        Create a histogram of the image channel we're editing
 ## -------------------------------------------------------------------
-nbins = 100
-pedit = figure(plot_height=200, plot_width=200, toolbar_location=None,
-               output_backend='webgl')
-pedit_data_source = ColumnDataSource({'value': [0]*nbins, 'x': range(nbins)})
-pedit.vbar(x='x', top='value', source=pedit_data_source, width=1)
-# pedit.xgrid.grid_line_color = None
-# phist.y_range_start = 0
+pedit = figure(plot_height=200, plot_width=300, toolbar_location=None,
+               output_backend='webgl', title='Intensity',
+              #  x_axis_label='Intensity',
+              #  y_axis_label='pixels'
+              )
+pedit_data_source = ColumnDataSource({'value': [0]*shared_variables['nbins'], 
+                                      'x': range(shared_variables['nbins'])})
+pedit.vbar(x='x', top='value', source=figure_sources['intensity_hist'], width=0.9,)
 
+
+figures = dict(
+  scatter_plot = p,
+  image_plot = pimg,
+  cluster_hist = phist,
+  intensity_hist = pedit
+)
 
 
 ## -------------------------------------------------------------------
 #                      Set up the app layout
 ## -------------------------------------------------------------------
-focus_inputs = column([hl_cluster_multichoice, clear_button_focus], width=300, height=200)
-focus_inputs.sizing_mode = "fixed"
-image_inputs = column([channels_multichoice, clear_button_image], width=300, height=200)
+cluster_inputs = column([widgets['cluster_select'], 
+                       widgets['clear_clusters']], 
+                       width=300, height=200)
+cluster_inputs.sizing_mode = "fixed"
+
+image_inputs = column([widgets['channels_select'], 
+                       widgets['clear_channels']], 
+                       width=300, height=200)
 image_inputs.sizing_mode = "fixed"
 
-image_edit_inputs = column([edit_image_dropdown, 
-                            row(image_colorpicker, image_slider)], 
+image_edit_inputs = column([widgets['focus_channel'], 
+                            row(widgets['color_picker'], widgets['color_slider']),
+                            widgets['update_image']], 
                             width=300, height=200)
 
-inputs = row([focus_inputs, 
+inputs = row([cluster_inputs, 
               image_inputs, 
               image_edit_inputs, 
-              pedit], 
-             height=200)
-# inputs.sizing_mode = "fixed"
+              figures['intensity_hist']], 
+             height=300)
 
 l = layout([[desc],
             [p],
@@ -245,114 +220,72 @@ l = layout([[desc],
            sizing_mode='scale_both',
 )
 
-print('Populating initial data')
-update()  # initial load of the data
-
 
 ## -------------------------------------------------------------------
 #                      Image drawing functions
 ## -------------------------------------------------------------------
-bbox = [0, 0, 0, 0]
-active_raw_images = {c: None for c in all_channels}
-def update_bbox(inds):
-  xmin = min(coords[inds,1])
-  xmax = max(coords[inds,1])
-  ymin = min(coords[inds,0])
-  ymax = max(coords[inds,0])
-  # bbox = [xmin, xmax, ymin, ymax]
-  bbox[0] = xmin
-  bbox[1] = xmax
-  bbox[2] = ymin
-  bbox[3] = ymax
 
-  # reset active images
-  use_channels = channels_multichoice.value
-  for c in use_channels:
-    active_raw_images[c] = None
+# Define actions for our buttons: 
+# one main function per button that kicks off actions that should take 
+# place when a value changes.
 
 
-# set up a persistent variable to hold the active image for each channel
-def update_image_plot():
-  use_channels = channels_multichoice.value
-  if len(use_channels) == 0:
-    print('No channels selected')
-    return
+def handle_clear_clusters(*args):
+  widgets['cluster_select'].value = []
 
-  if sum(bbox) == 0:
-    print('No bbox to draw')
-    return
 
-  ## Decide if we have to read images from disk or not
-  need_to_pull = False
-  for c in use_channels:
-    img = active_raw_images[c]
-    if img is None:
-      need_to_pull = True
-      break
-        
-  if need_to_pull:
-    print(f'Pulling bbox: {bbox} from {use_channels}')
-    use_files = [ad.uns['image_sources'][c] for c in use_channels]
-    images = get_images(use_files, bbox)
-  else:
-    images = np.dstack([active_raw_images[c] for c in use_channels])
+def handle_clear_channels(*args):
+  widgets['channels_select'].value = []
 
-  for i, c in enumerate(use_channels):
-    active_raw_images[c] = images[:,:,i].copy()
 
-  colors = []
-  for c in use_channels:
-    chc = (np.array(channel_colors[c])*255).astype(np.uint8)
-    print('setting color', c, chc)
-    colors.append(chc)
+def select_cells():
+    cluster_vals = widgets['cluster_select'].value
+    if len(cluster_vals) == 0:
+      idx = np.ones(data.shape[0], dtype='bool')
+    else:
+      idx = data.mean_leiden.isin(cluster_vals)
 
-  colors = np.stack(colors, axis=0)
+    fg_data = data[idx]
+    bg_data = data[~idx]
+    return fg_data, bg_data
 
-  saturation = []
-  for c in use_channels:
-    s = saturation_vals[c] 
-    if s is None:
-      s = np.quantile(s, 0.95)
-    saturation.append(s)
+def update_scatter():
+    df_fg, df_bg = select_cells()
 
-  blended = blend_images(images, saturation_vals=saturation, colors=colors)
-  blended = blended[::-1,:] # flip
-  image_data_source.data = {'value': [blended]}
+    figures['scatter_plot'].title.text = "Highlighting %d cells" % len(df_fg)
+    figure_sources['scatter_fg'].data = dict(
+        x=df_fg['coordinates_1'],
+        y=df_fg['coordinates_2'],
+        mean_leiden=df_fg['mean_leiden'],
+        z_leiden=df_fg['z_leiden'],
+        active_color=df_fg["active_color"],
+    )
+    figure_sources['scatter_bg'].data = dict(
+        x=df_bg['coordinates_1'],
+        y=df_bg['coordinates_2'],
+        mean_leiden=df_bg['mean_leiden'],
+        z_leiden=df_bg['z_leiden'],
+    )
 
 
 def update_clusters_hist(inds):
   selected_vals = ad.obs.mean_leiden.values[inds]
   vals = np.zeros(len(all_clusters), dtype=np.int)
   for i,u in enumerate(all_clusters):
-    print(f'selection cluster {u}: {(selected_vals == u).sum()}')
+    logger.info(f'selection cluster {u}: {(selected_vals == u).sum()}')
     vals[i] = (selected_vals == u).sum()
-  phist_data_source.data = {'value': vals, 'x': all_clusters}
+  figure_sources['cluster_hist'].data = {'value': vals, 'x': all_clusters}
 
 
 def update_selection(attr, old, new):
   if len(new)==0:
-    # selected nothing, take no action
+    logger.info('Nothing selected')
     return
-
-  print(attr)
-
   inds = new
-  update_bbox(inds)
+  update_bbox(inds, shared_variables)
   update_clusters_hist(inds)
-  update_image_plot()
-  p.title.text = "Highlighting %d cells" % len(inds)
-
-
-def update_edit_hist(pedit_data_source):
-  img = active_raw_images[active_channel[0]].ravel()
-  hist, edges = np.histogram(img, bins=nbins)
-  pedit_data_source = {'value': hist, 'x': edges}
-
-
-def channels_changed(attr, old, new):
-  set_dropdown_menu()
-  update_image_plot()
-
+  figures['scatter_plot'].title.text = "Highlighting %d cells" % len(inds)
+  figures['cluster_hist'].title.text = "Highlighting %d cells" % len(inds)
 
 # https://docs.bokeh.org/en/latest/docs/gallery/color_sliders.html
 def hex_to_dec(hex):
@@ -365,44 +298,57 @@ def hex_to_dec(hex):
 def update_color(attr, old, new):
   # Set the new active color for the channel in channel_colors and re-draw the image
   # active_channel = edit_image_dropdown.value
-  color_hex = image_colorpicker.color
+  color_hex = widgets['color_picker'].color
   color_rgb = hex_to_dec(color_hex)
-  channel_colors[active_channel[0]] = np.array(color_rgb)/255.
-  print('new color:', color_hex, color_rgb)
-  print('set color for active_channel', active_channel[0], 'redrawing...')
-  update_image_plot()
+  ac = shared_variables['active_channel']
+  shared_variables['channel_colors'][ac] = np.array(color_rgb)/255.
+  logger.info(f'new color: {color_hex} {color_rgb}')
+  logger.info(f'set color for active_channel {ac} redrawing...')
 
 
 def update_intensity(attr, old, new):
-  print('setting channel', active_channel[0], 'saturation to', new)
-  saturation_vals[active_channel[0]] = new
-  update_image_plot()
+  ac = shared_variables['active_channel']
+  print('setting channel', ac, 'saturation to', new)
+  shared_variables['saturation_vals'][ac] = new
 
 
+def handle_update_image(event):
+  # update_image_plot(channels_multichoice, bbox, active_raw_images, channel_colors,
+  #                     image_data_source, ad, saturation_vals)
+  update_image_plot(shared_variables, widgets, figure_sources, figures)
 
-# Now wire the editing options together
-active_channel = ['DAPI']
-def set_active_channel(event):
-  active_channel[0] = event.item
-  print('setting active_channel', active_channel)
-  edit_image_dropdown.label = f'Edit {active_channel[0]} image'
-  image_colorpicker.title = f'{active_channel[0]} color'
-  image_colorpicker.color = rgb2hex(channel_colors[active_channel[0]])
-  image_slider.title = f'{active_channel[0]} saturation'
-  image_slider.value = saturation_vals[active_channel[0]]
-  update_edit_hist(pedit_data_source)
-
-edit_image_dropdown.on_click(set_active_channel)
+def handle_set_active_channel(event):
+  # This is a bear. lots of stuff happens when the active channel is changed.
+  set_active_channel(event, shared_variables, widgets, figure_sources, figures)
 
 
+# Pin action functions to controls
+update_functions['handle_clear_clusters'] = handle_clear_clusters
+update_functions['handle_clear_channels'] = handle_clear_channels
+update_functions['update_scatter'] = update_scatter
+update_functions['update_intensity'] = update_intensity
+update_functions['update_color'] = update_color
+update_functions['handle_focus_channel'] = handle_set_active_channel
+update_functions['handle_update_image'] = handle_update_image
 
-# slider needs to be on release or something..
-image_slider.on_change('value', update_intensity)
-image_colorpicker.on_change('color', update_color)
-channels_multichoice.on_change('value', channels_changed)
+
+# Tie buttons to functions
+widgets['cluster_select'].on_change('value', lambda attr, old, new: update_functions['update_scatter']())
+widgets['channels_select'].on_change('value', lambda attr, old, new: set_dropdown_menu(shared_variables, widgets))
+widgets['clear_clusters'].on_click(update_functions['handle_clear_clusters'])
+widgets['clear_channels'].on_click(update_functions['handle_clear_channels'])
+widgets['color_slider'].on_change('value_throttled', update_functions['update_intensity'])
+widgets['color_picker'].on_change('color', update_functions['update_color'])
+widgets['focus_channel'].on_click(update_functions['handle_focus_channel'])
+widgets['update_image'].on_click(update_functions['handle_update_image'])
 
 # Only select from foreground "in focus" cells
-r.data_source.selected.on_change('indices', update_selection)
+fg_scatter.data_source.selected.on_change('indices', update_selection)
 
+logger.info('Populating initial data')
+update_scatter()  # initial load of the data
+
+
+logger.info('adding layout to root')
 curdoc().add_root(l)
 curdoc().title = "CODEX"
