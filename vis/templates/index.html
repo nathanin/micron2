@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<style>
+.my-widgets {
+  color: white;
+}
+</style>
+<html lang="en">
+    <head>
+        <style>
+            body { background: #2f2f2f; }
+        </style>
+        <meta charset="utf-8">
+        {{ bokeh_css }}
+        {{ bokeh_js }}
+    </head>
+    <body>
+        {{ plot_div|indent(8) }}
+        {{ plot_script|indent(8) }}
+    </body>
+</html>

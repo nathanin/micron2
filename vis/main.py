@@ -8,7 +8,7 @@ import pandas as pd
 from bokeh.io import curdoc
 from bokeh.layouts import column, row, layout, gridplot
 from bokeh.models import (ColumnDataSource, BoxSelectTool, LassoSelectTool, Button, 
-                          Div, Select, Slider, TextInput, MultiChoice, ColorPicker, 
+                          Div, Select, Slider, TextInput, MultiChoice, MultiSelect, ColorPicker, 
                           Dropdown, Span, CheckboxButtonGroup, 
                           CheckboxGroup, Spinner)
 from bokeh.plotting import figure
@@ -16,10 +16,18 @@ from bokeh.plotting import figure
 import seaborn as sns
 from matplotlib.colors import rgb2hex
 
+from bokeh.themes import built_in_themes
+
 from micron2.codexutils import get_images, blend_images
 from micron2.spatial import get_neighbors, pull_neighbors
 from .selection_ops import (logger, set_dropdown_menu, set_active_channel,
                             update_image_plot, update_bbox)
+from .scatter_gate import ScatterGate
+
+
+# curdoc().theme = 'dark_minimal'
+# from bokeh.themes import Theme
+# curdoc().theme = Theme(filename='theme.yaml')
 
 # from .selection_ops import logger as logg
 # logger = make_logger()
@@ -35,7 +43,7 @@ data['coordinates_2'] = ad.obsm['coordinates'][:,1]
 
 color_map = {k: v for k, v in zip(np.unique(ad.obs.mean_leiden), ad.uns['mean_leiden_colors'])}
 data['color'] = [color_map[g] for g in ad.obs.mean_leiden]
-data['active_color'] = [color_map[g] for g in ad.obs.mean_leiden]
+# data['active_color'] = [color_map[g] for g in ad.obs.mean_leiden]
 
 # coords are stored with Y inverted for plotting with matplotlib.. flip it back for pulling from the images.
 coords = ad.obsm['coordinates']
@@ -104,22 +112,29 @@ CLUSTER_VIEW_OPTS = [
   'Show neighbors'
 ]
 widgets = dict(
-  cluster_select = MultiChoice(title='Focus clusters', value=[], options=all_clusters),
-  channels_select = MultiChoice(title='Show channels', value=['DAPI'], options=all_channels),
+  cluster_select = MultiSelect(title='Focus clusters', value=[], options=all_clusters, 
+                               height=200,
+                               css_classes=["my-widgets"]),
+  channels_select = MultiSelect(title='Show channels', value=['DAPI'], options=all_channels,
+                                height=200,
+                                css_classes=["my-widgets"]),
 
   ## Options for selecting cells via cluster
-  cluster_view_opts = CheckboxGroup(labels=CLUSTER_VIEW_OPTS, active=[]),
+  cluster_view_opts = CheckboxGroup(labels=CLUSTER_VIEW_OPTS, active=[],css_classes=["my-widgets"]),
 
   ## Select and edit colors
-  focus_channel = Dropdown(label='Edit DAPI image', button_type='primary', menu=['DAPI']),
-  color_picker = ColorPicker(title='DAPI color', width=100, color=rgb2hex(channel_colors['DAPI'])),
+  focus_channel = Dropdown(label='Edit DAPI image', button_type='primary', menu=['DAPI'],),
+  color_picker = ColorPicker(title='DAPI color', width=100, color=rgb2hex(channel_colors['DAPI']),
+                             css_classes=["my-widgets"]),
   color_saturation = Spinner(low=0, high=255, step=1, title='DAPI saturation',                         
-                        width=80, value=50),
+                             width=80, value=50, css_classes=["my-widgets"]),
   clear_clusters = Button(label='Clear focused cells', button_type='success'),
   clear_channels = Button(label='Clear image channels', button_type='success'),
   update_image = Button(label='Update drawing', button_type='success')
 )
 
+# widgets['cluster_select'].title.text_color = '#e7e7e7'
+# widgets['channels_select'].title.text_color = '#e7e7e7'
 
 
 ## -------------------------------------------------------------------
@@ -181,9 +196,8 @@ pimg.image_rgba(image='value', source=figure_sources['image_data'],
 phist = figure(x_range=all_clusters, 
                title="",
                x_axis_label='Clusters',
-               y_axis_label='Cells (log)',
-               plot_height=200, 
-              #  plot_width=wi, 
+               y_axis_label='Cells',
+               plot_height=int(width/2), 
                toolbar_location=None,
                output_backend='webgl')
 phist.vbar(x='x', top='value',  source=figure_sources['cluster_hist'], width=0.9)
@@ -196,9 +210,8 @@ phist.yaxis.major_label_text_font_size = '12pt'
 pnhist = figure(x_range=all_clusters, 
                title="",
                x_axis_label='Clusters',
-               y_axis_label='Cells (log)',
-               plot_height=200, 
-              #  plot_width=wi, 
+               y_axis_label='Cells',
+               plot_height=int(width/2), 
                toolbar_location=None,
                output_backend='webgl')
 pnhist.vbar(x='x', top='value',  source=figure_sources['neighbor_hist'], width=0.9)
@@ -214,11 +227,28 @@ pnhist.yaxis.major_label_text_font_size = '12pt'
 pedit = figure(plot_height=200, plot_width=300, toolbar_location=None,
                output_backend='webgl', title='Intensity',
                x_axis_label='Intensity',
-               y_axis_label='pixels'
+               y_axis_label='pixels (log)'
               )
 pedit_data_source = ColumnDataSource({'value': [0]*shared_variables['nbins'], 
                                       'x': range(shared_variables['nbins'])})
 pedit.vbar(x='x', top='value', source=figure_sources['intensity_hist'], width=0.9,)
+pedit.xaxis.axis_label_text_font_size = '10pt'
+pedit.yaxis.axis_label_text_font_size = '10pt'
+pedit.xaxis.major_label_text_font_size = '8pt'
+pedit.yaxis.major_label_text_font_size = '8pt'
+
+
+
+## -------------------------------------------------------------------
+#                      Selection scatter plot
+## -------------------------------------------------------------------
+
+
+scatter_gate_module = ScatterGate(data[all_channels], 
+                                  height = int(width/2),
+                                  width =  int(width/2),
+                                  initial_values = all_channels[1:3])
+
 
 
 figures = dict(
@@ -226,7 +256,8 @@ figures = dict(
   image_plot = pimg,
   cluster_hist = phist,
   neighbor_hist = pnhist,
-  intensity_hist = pedit
+  intensity_hist = pedit,
+  scatter_gate = scatter_gate_module
 )
 
 
@@ -235,33 +266,59 @@ figures = dict(
 ## -------------------------------------------------------------------
 cluster_inputs = column([widgets['cluster_select'], 
                          widgets['clear_clusters'], 
-                         widgets['cluster_view_opts']],
-                         width=200, height=300, 
+                         widgets['cluster_view_opts'],],
+                         width=300, height=300
                        )
-cluster_inputs.sizing_mode = "fixed"
+# cluster_inputs.sizing_mode = "fixed"
 
-image_inputs = column([widgets['channels_select'], 
-                       widgets['clear_channels']], 
-                       width=200, height=300)
-image_inputs.sizing_mode = "fixed"
+image_inputs = column(
+  widgets['channels_select'], 
+  widgets['clear_channels'], 
+  width=300, height=300
+)
+# image_inputs.sizing_mode = "fixed"
 
 image_edit_inputs = column([widgets['focus_channel'], 
                             row(widgets['color_picker'], widgets['color_saturation']),
-                            widgets['update_image']], 
-                            width=200, height=200)
+                            widgets['update_image'],
+                            figures['intensity_hist']], 
+                            width=300, height=200)
 
-inputs = row([cluster_inputs, 
-              image_inputs, 
-              image_edit_inputs, 
-              figures['intensity_hist']], 
-             width=300,
-             height=100)
+left_inputs = column([
+  cluster_inputs, 
+  image_inputs, 
+  image_edit_inputs,
+  ], 
+  width=300, height=1000)
+left_inputs.sizing_mode = 'fixed'
+            
 
-l = layout([[desc],
-            [inputs],
-            [figures['scatter_plot'], figures['image_plot']],
-            [figures['cluster_hist'], figures['neighbor_hist']],
-           ], 
+right_inputs = column([
+  figures['scatter_gate'].selection,
+  figures['scatter_gate'].sliders,
+  ], 
+  width=300, height=1000)
+right_inputs.sizing_mode = 'fixed'
+
+selection_hists = row(
+  figures['cluster_hist'], 
+  figures['neighbor_hist'],
+  sizing_mode='scale_both'
+)
+
+
+all_plots = layout([
+  [figures['scatter_plot'], figures['image_plot'], figures['scatter_gate'].FIG], 
+  [selection_hists] 
+], sizing_mode='scale_both')
+
+
+data_layout = layout([ 
+  [left_inputs, all_plots, right_inputs],
+], sizing_mode='scale_both')
+
+
+l = layout([[desc], [data_layout]], 
            sizing_mode='scale_both',
 )
 
@@ -276,11 +333,17 @@ l = layout([[desc],
 
 
 def handle_clear_clusters(*args):
-  widgets['cluster_select'].value = []
+  widgets['cluster_select'].value = [] # triggers update scatter
 
 
 def handle_clear_channels(*args):
   widgets['channels_select'].value = []
+
+
+def get_gated_cells():
+  gate_selection_idx = figures['scatter_gate'].data.index[figures['scatter_gate'].selected]
+  gate_selection = data.index.isin(gate_selection_idx)
+  
 
 
 def get_selected_clusters():
@@ -366,13 +429,16 @@ def update_scatter():
   n_hl = shared_variables['highlight_cells'].sum()
   n_nbr = shared_variables['neighbor_cells'].sum()
 
+  # Update the gate scatter plot 
+  figures['scatter_gate'].update_data(data.loc[shared_variables['highlight_cells']])
+
   logger.info(f'updating scatter with options: {widgets["cluster_view_opts"].active}')
   logger.info(f'highlighting total {n_hl} cells')
 
   if 0 in widgets['cluster_view_opts'].active:
     fg_colors = np.array([shared_variables['foreground_color']] * data.shape[0])
   else:
-    fg_colors = np.array(data['active_color'])
+    fg_colors = np.array(data['color'])
 
   # in_box_not_selected = shared_variables['box_selection'] & ~shared_variables['cluster_selection']
   fg_colors[~shared_variables['highlight_cells']] = shared_variables['background_color']
