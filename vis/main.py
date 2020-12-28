@@ -22,7 +22,9 @@ from micron2.codexutils import get_images, blend_images
 from micron2.spatial import get_neighbors, pull_neighbors
 from .selection_ops import (logger, set_dropdown_menu, set_active_channel,
                             update_image_plot, update_bbox)
+
 from .scatter_gate import ScatterGate
+from .boxplot import BokehBoxPlot
 
 
 # curdoc().theme = 'dark_minimal'
@@ -250,6 +252,13 @@ scatter_gate_module = ScatterGate(data[all_channels],
                                   initial_values = all_channels[1:3])
 
 
+## -------------------------------------------------------------------
+#                      Selection scatter plot
+## -------------------------------------------------------------------
+
+boxplot_module = BokehBoxPlot(data, varnames=[v for v in all_channels if v !='DAPI'],
+                              height=200, width=1000)
+
 
 figures = dict(
   scatter_plot = p,
@@ -257,7 +266,8 @@ figures = dict(
   cluster_hist = phist,
   neighbor_hist = pnhist,
   intensity_hist = pedit,
-  scatter_gate = scatter_gate_module
+  scatter_gate = scatter_gate_module,
+  boxplot = boxplot_module
 )
 
 
@@ -309,7 +319,8 @@ selection_hists = row(
 
 all_plots = layout([
   [figures['scatter_plot'], figures['image_plot'], figures['scatter_gate'].FIG], 
-  [selection_hists] 
+  [selection_hists],
+  [figures['boxplot'].p]
 ], sizing_mode='scale_both')
 
 
@@ -428,6 +439,8 @@ def update_scatter():
   get_selected_clusters()
   n_hl = shared_variables['highlight_cells'].sum()
   n_nbr = shared_variables['neighbor_cells'].sum()
+
+  figures['boxplot'].update_data(data.loc[shared_variables['highlight_cells']])
 
   # Update the gate scatter plot 
   figures['scatter_gate'].update_data(data.loc[shared_variables['highlight_cells']])
