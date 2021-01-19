@@ -11,3 +11,6 @@
 *.joblib
 */__pycache__/*
 micron2.egg-info
+
+*-checkpoint.ipynb
+*.ipynb_checkpoints/
