@@ -1,9 +1,11 @@
 import leidenalg
 import igraph
 import numpy as np
+import warnings
 
 from sklearn.neighbors import kneighbors_graph
 from matplotlib import pyplot as plt
+import tensorflow as tf
 
 try:
   import cudf
@@ -11,7 +13,7 @@ try:
   from cuml.neighbors import NearestNeighbors
   import cupy as cp
 except:
-  print('Failed to import GPU tools. Fast NN will not be possible.')
+  warnings.warn('Failed to import GPU tools. Accelerated neighbors/leiden/t-SNE/UMAP will not be unavailable')
 
 __all__ = [
   'cluster_leiden',
@@ -107,3 +109,12 @@ def plot_embedding(emb, values, title=None, categorical=False, size=2, ax=None, 
     ax.set_xticklabels([])
     ax.set_yticks([])
     ax.set_yticklabels([])
+
+
+def perturb_x(x, crop_size=48):
+  x = tf.image.random_crop(x, size=(x.shape[0], crop_size, crop_size, x.shape[-1]))
+  x = tf.image.random_flip_left_right(x)
+  x = tf.image.random_flip_up_down(x)
+  return x
+
+# def perturb_pp(x, crop_size=48):

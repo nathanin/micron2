@@ -1,10 +1,14 @@
 import numpy as np
 import pandas as pd
+import warnings
 
-import cudf
-import cugraph
-from cuml.neighbors import NearestNeighbors
-import cupy as cp
+try:
+  import cudf
+  import cugraph
+  from cuml.neighbors import NearestNeighbors
+  import cupy as cp
+except:
+  warnings.warn("Failed to load RAPIDS cuda-enabled tools.")
 
 __all__ = [
   'get_neighbors',

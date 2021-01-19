@@ -4,8 +4,14 @@ import pytiff
 import time
 import h5py
 import os
+import warnings
+
 import tensorflow as tf
-import tensorflow_io as tfio
+try:
+  import tensorflow_io as tfio
+except:
+  warnings.warn('Failed to load tensorflow-io.')
+
 from tqdm.auto import tqdm
 
 """
@@ -55,7 +61,7 @@ def process_channels(*x):
   return x
 
 
-def stream_dataset(fpath, use_channels=['DAPI', 'CD45', 'PanCytoK']):
+def stream_dataset(fpath, use_channels=['DAPI', 'CD45', 'PanCytoK'], group_name='cells'):
   """
   Set up streaming from an hdf5 dataset
 
@@ -64,7 +70,7 @@ def stream_dataset(fpath, use_channels=['DAPI', 'CD45', 'PanCytoK']):
 
   We need to extend this to ingest multiple source files at a time.
   """
-  channel_ds = [tfio.IODataset.from_hdf5(fpath, f'/cells/{c}') for c in use_channels]
+  channel_ds = [tfio.IODataset.from_hdf5(fpath, f'/{group_name}/{c}') for c in use_channels]
   dataset = (tf.data.Dataset.zip(tuple(channel_ds))
             .map(process_channels))
 

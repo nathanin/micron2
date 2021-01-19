@@ -5,7 +5,96 @@ import pandas as pd
 import tensorflow as tf
 import tqdm.auto as tqdm
 
-from tensorflow.keras.layers import (Dense, Conv2D, Dropout, BatchNormalization, Conv2DTranspose)
+from tensorflow.keras.layers import (Dense, 
+  Conv2D, Dropout, BatchNormalization, Conv2DTranspose,
+  Flatten
+  )
+
+from tensorflow.keras.layers.experimental.preprocessing import (
+  RandomFlip,
+  RandomRotation,
+  RandomTranslation,
+  RandomCrop,
+  RandomContrast
+)
+
+
+class Encoder(tf.keras.Model):
+  def __init__(self, input_shape=[64, 64, 3], g_network=True):
+    super(Encoder, self).__init__()
+    self.n_channels = input_shape[-1]
+    self.x_size = input_shape[0]
+    
+    # perturb functions
+    # self.contrast = RandomContrast()
+    self.flip = RandomFlip()
+    self.rotate = RandomRotation(1, fill_mode='constant', fill_value=0)
+    self.translate = RandomTranslation(height_factor=(0.1, 0.1), 
+                                       width_factor=(0.1,0.1),
+                                       fill_mode='constant',
+                                       fill_value=0)
+    self.crop = RandomCrop(self.x_size, self.x_size)
+
+
+    self.conv_1 = tf.keras.applications.ResNet50V2(include_top=False, weights=None,
+                             input_shape=input_shape,
+                             pooling='average')
+
+    self.conv_2 = Conv2D(filters=512, kernel_size=(2,2), strides=(1,1), 
+               padding='same', activation='relu')
+    self.flat = Flatten()
+
+    self.dense_1 = Dense(512, activation='relu')
+    self.dense_2 = Dense(256, activation=None)
+
+    self.g_network = g_network
+    if self.g_network:
+      self.g_fn_0 = Dense(128, activation='relu')
+      self.g_fn_1 = Dense(32, activation=None)
+
+  def perturb(self, x):
+    x = self.flip(x)
+    x = self.rotate(x)
+    x = self.translate(x)
+    x = self.crop(x)
+    return x
+
+  def model_backbone(self, x, training=True):
+    if training:
+      x = self.perturb(x)
+
+    x = self.conv_1(x, training=training)
+    x = self.conv_2(x)
+    x = self.flat(x)
+    x = self.dense_1(x)
+    x = self.dense_2(x)
+    return x
+
+  def call(self, x, return_g=False, training=True):
+    x = self.model_backbone(x, training=training)
+
+    if return_g:
+      g = self.g_fn_0(x)
+      g = self.g_fn_1(g)
+      return x, g
+    else:
+      return x
+
+  def encode(self, x, training=True):
+    x = self.model_backbone(x, training=training)
+    x = tf.math.l2_normalize(x, axis=1)
+    return x
+
+  def encode_g(self, x, training=True):
+    # x = self.model_backbone(x, training=training)
+    # x = tf.math.l2_normalize(x, axis=1)
+    x = self.encode(x, training=training)
+    g = self.g_fn_0(x)
+    g = self.g_fn_1(g)
+    return g
+
+
+
 
 class Autoencoder(tf.keras.Model):
   def __init__(self, input_shape=[64, 64, 3], g_network=True):
@@ -40,7 +129,7 @@ class Autoencoder(tf.keras.Model):
     setattr(self, f'{name}_5', Conv2DTranspose(filters=self.n_channels,  kernel_size=(5,5),
                     strides=(2,2), **p_act))
     setattr(self, f'{name}_6', Conv2DTranspose(filters=self.n_channels,  kernel_size=(3,3),
-                    strides=(1,1), **p_act))
+                    strides=(1,1), padding='same', activation=None))
     
   def apply_upsample(self, z, name='upsample'):
     for j in range(self.n_upsamples):
