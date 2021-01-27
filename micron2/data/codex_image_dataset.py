@@ -100,6 +100,9 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
     """
     tile_nuclei = ast.literal_eval(h5f['images'].attrs['tile_encapsulated_cells'])
     uns_dict['tile_nuclei'] = tile_nuclei
+
+  uns_dict['image_sources'] = ast.literal_eval(h5f['meta'].attrs['image_sources'])
+
   # ----------------------------- / Build UNS -----------------------------------
 
   adata = AnnData(features, 

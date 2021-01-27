@@ -71,6 +71,7 @@ def get_nuclear_masks(nuclei_img, xy_coords, sizeh, write_size):
 def get_channel_means(h5f, group_name='intensity', 
                       idkey='meta/Cell_IDs',
                       use_masks=True,
+                      mask_dataset='meta/nuclear_masks',
                       return_values=False):
   """
   Use data stored in hdf5 cell image dataset to get channel means per cell.
@@ -90,7 +91,7 @@ def get_channel_means(h5f, group_name='intensity',
   vals = {k: np.zeros(n_cells, dtype=np.float32) for k in channel_names}
 
   if use_masks:
-    masks = h5f['meta/nuclear_masks'][:]
+    masks = h5f[mask_dataset][:]
 
   for channel in channel_names:
     data_stack = h5f[f'cells/{channel}'][:]
@@ -104,7 +105,7 @@ def get_channel_means(h5f, group_name='intensity',
         data = data[mask]
 
       vals[channel][i] = np.mean(data)
-      if i % 50000 == 0:
+      if i % 25000 == 0:
         pbar.set_description(f'Channel {channel} running mean: {np.mean(vals[channel]):3.4e}')
   
   for channel in channel_names:
@@ -187,7 +188,8 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img,
   xy_coords = np.array(coords.loc[:, ['X', 'Y']])
   d = h5f.create_dataset('meta/cell_coordinates', data=xy_coords)
 
-  # If a mask is provided, store individual masks for each nucleus
+  # If a mask is provided, store individual masks for each nucleus and get 
+  # channel means constrained to the area under the nuclear mask for each cell.
   if nuclei_img is not None:
     masks = get_nuclear_masks(nuclei_img, xy_coords, sizeh, write_size)
     d = h5f.create_dataset('meta/nuclear_masks', data=masks)
@@ -332,9 +334,9 @@ def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
                 overlap=0, tile_size=256, channel_names=None, 
                 debug=False):
   """
-  Build a cell image dataset
+  Build a codex image dataset
 
-  ** NOTE this function converts from uint16 to uint8 **
+  ** NOTE this function converts image data from uint16 to uint8 by default **
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   
@@ -343,24 +345,35 @@ def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   Creates an hdf5 file with datasets like:
-  cells/DAPI
-  cells/CD45
+    cells/DAPI
+    cells/CD45
+    ...
 
-  And non-imaging meta datasets:
-  meta/Cell_IDs
-  meta/channel_names
-  meta/nuclear_masks
-  meta/img_size
+    tiles/DAPI
+    tiles/CD45
+    ...
+
+  And meta datasets:
+    meta/Cell_IDs
+    meta/Tile_IDs
+    meta/channel_names
+    meta/nuclear_masks
+    meta/img_size
+    meta/image_sources
 
   Args:
-    coords (pd.DataFrame)
-    image_paths (list)
-    out_file (str)
-    nuclei_img (str)
-    size (int)
-    min_area (float)
-    scale_factor (float)
-    channel_names (list)
+    coords (pd.DataFrame): must have columns `X`, `Y` and `Size`
+    image_paths (list, tuple): paths to uint16 TIF images, one for each channel
+    out_file (str): path to store the created dataset
+    nuclei_img (str): path to a nuclei label image
+    size (int): size of nuclei image to pull
+    min_area (float): lower bound on the area of nuclei to include
+    scale_factor (float): 0 < scale_factor < 1 means downsampling, >1 means upsampling the nuclei
+    tile_scale_factor (float): 0 < scale_factor < 1 means downsampling, >1 means upsampling the tiles
+    overlap (float): the percentage of overlap between neighboring tiles
+    tile_size (int): the tile size to pull on the rectangular grid of tiles that contain nuclei
+    channel_names (list): names for the channels, same order as `image_paths`. Otherwise names are created.
+    debug (bool): if True, subsets to the first 50 nuclei and tiles for quick testing.
   """
 
   if channel_names is None:
@@ -374,6 +387,9 @@ def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
   # Store the source channel names 
   channel_names_ds = np.array(channel_names, dtype='S')
   d = h5f.create_dataset('meta/channel_names', data=channel_names_ds)
+
+  image_sources_dict = {ch: pth for ch, pth in zip(channel_names, image_paths)}
+  h5f['meta'].attrs['image_sources'] = str(image_sources_dict)
 
   create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
                         channel_names, scale_factor, debug=debug)
