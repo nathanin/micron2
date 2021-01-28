@@ -45,7 +45,7 @@ def crunch_img(img):
 
 
 
-def get_nuclear_masks(nuclei_img, xy_coords, sizeh, write_size):
+def get_masks(nuclei_img, xy_coords, sizeh, write_size):
   with pytiff.Tiff(nuclei_img, "r") as f:
     img = f.pages[0][:]
 
@@ -95,18 +95,18 @@ def get_channel_means(h5f, group_name='intensity',
 
   for channel in channel_names:
     data_stack = h5f[f'cells/{channel}'][:]
-    pbar = tqdm(range(n_cells))
-    pbar.set_description(f'Channel {channel}')
-    for i in pbar:
-      data = data_stack[i]
+    with tqdm(range(n_cells)) as pbar:
+      pbar.set_description(f'Channel {channel}')
+      for i in pbar:
+        data = data_stack[i]
 
-      if use_masks:
-        mask = masks[i]
-        data = data[mask]
+        if use_masks:
+          mask = masks[i]
+          data = data[mask]
 
-      vals[channel][i] = np.mean(data)
-      if i % 25000 == 0:
-        pbar.set_description(f'Channel {channel} running mean: {np.mean(vals[channel]):3.4e}')
+        vals[channel][i] = np.mean(data)
+        if i % 25000 == 0:
+          pbar.set_description(f'Channel {channel} running mean: {np.mean(vals[channel]):3.4e}')
   
   for channel in channel_names:
     d = h5f.create_dataset(f'{group_name}/{channel}', data=vals[channel])
@@ -119,7 +119,7 @@ def get_channel_means(h5f, group_name='intensity',
     return vals 
 
 
-def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
+def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img, 
                           channel_names, scale_factor, debug=False):
   h0 = pytiff.Tiff(image_paths[0])
   sizeh = int(size/2)
@@ -156,18 +156,18 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img,
     page = h.pages[0][:]
     
     i = 0
-    pbar = tqdm(zip(coords.X, coords.Y))
-    pbar.set_description(f'Pulling nuclei from channel {c}')
-    for x, y in pbar:
-      bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
-      img = (255 * (page[bbox[0]:bbox[1], bbox[2]:bbox[3]] / 2**16)).astype(np.uint8)
+    with tqdm(zip(coords.X, coords.Y)) as pbar:
+      pbar.set_description(f'Pulling nuclei from channel {c}')
+      for x, y in pbar:
+        bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
+        img = (255 * (page[bbox[0]:bbox[1], bbox[2]:bbox[3]] / 2**16)).astype(np.uint8)
 
-      if scale_factor != 1:
-        # img = cv2.resize(img, dsize=(0,0), fx=scale_factor, fy=scale_factor)
-        img = cv2.resize(img, dsize=(write_size, write_size))
+        if scale_factor != 1:
+          # img = cv2.resize(img, dsize=(0,0), fx=scale_factor, fy=scale_factor)
+          img = cv2.resize(img, dsize=(write_size, write_size))
 
-      d[i,...] = img
-      i += 1
+        d[i,...] = img
+        i += 1
 
     h.close()
     h5f.flush()
@@ -191,9 +191,14 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img,
   # If a mask is provided, store individual masks for each nucleus and get 
   # channel means constrained to the area under the nuclear mask for each cell.
   if nuclei_img is not None:
-    masks = get_nuclear_masks(nuclei_img, xy_coords, sizeh, write_size)
+    masks = get_masks(nuclei_img, xy_coords, sizeh, write_size)
     d = h5f.create_dataset('meta/nuclear_masks', data=masks)
-    get_channel_means(h5f, group_name='cell_intensity', return_values=False)
+    get_channel_means(h5f, group_name='cell_intensity', mask_dataset='meta/nuclear_masks', return_values=False)
+
+  if membrane_img is not None:
+    masks = get_masks(membrane_img, xy_coords, sizeh, write_size)
+    d = h5f.create_dataset('meta/membrane_masks', data=masks)
+    get_channel_means(h5f, group_name='membrane_intensity', mask_dataset='meta/membrane_masks', return_values=False)
 
 
 
@@ -272,20 +277,20 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
     page = h.pages[0][:]
     
     i = 0
-    pbar = tqdm(coords)
-    pbar.set_description(f'Pulling tiles from channel {c}')
-    for coord in pbar:
-      y, x = coord
-      # bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
-      bbox = [x, x+size, y, y+size]
-      img = (255 * (page[bbox[0]:bbox[1], bbox[2]:bbox[3]] / 2**16)).astype(np.uint8)
+    with tqdm(coords) as pbar:
+      pbar.set_description(f'Pulling tiles from channel {c}')
+      for coord in pbar:
+        y, x = coord
+        # bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
+        bbox = [x, x+size, y, y+size]
+        img = (255 * (page[bbox[0]:bbox[1], bbox[2]:bbox[3]] / 2**16)).astype(np.uint8)
 
-      if scale_factor != 1:
-        # img = cv2.resize(img, dsize=(0,0), fx=scale_factor, fy=scale_factor)
-        img = cv2.resize(img, dsize=(write_size, write_size))
+        if scale_factor != 1:
+          # img = cv2.resize(img, dsize=(0,0), fx=scale_factor, fy=scale_factor)
+          img = cv2.resize(img, dsize=(write_size, write_size))
 
-      d[i,...] = img
-      i += 1
+        d[i,...] = img
+        i += 1
 
     h.close()
     h5f.flush()
@@ -330,7 +335,7 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
 
 
 def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
-                size=64, min_area=100, scale_factor=1., tile_scale_factor=1.,
+                membrane_img=None, size=64, min_area=100, scale_factor=1., tile_scale_factor=1.,
                 overlap=0, tile_size=256, channel_names=None, 
                 debug=False):
   """
@@ -365,7 +370,8 @@ def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
     coords (pd.DataFrame): must have columns `X`, `Y` and `Size`
     image_paths (list, tuple): paths to uint16 TIF images, one for each channel
     out_file (str): path to store the created dataset
-    nuclei_img (str): path to a nuclei label image
+    nuclei_img (str): path to a nuclei label image or binary mask
+    membrane_img (str): path to a membrane label image or binary mask
     size (int): size of nuclei image to pull
     min_area (float): lower bound on the area of nuclei to include
     scale_factor (float): 0 < scale_factor < 1 means downsampling, >1 means upsampling the nuclei
@@ -391,7 +397,7 @@ def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
   image_sources_dict = {ch: pth for ch, pth in zip(channel_names, image_paths)}
   h5f['meta'].attrs['image_sources'] = str(image_sources_dict)
 
-  create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
+  create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img,
                         channel_names, scale_factor, debug=debug)
 
   create_image_dataset(image_paths, h5f, tile_size, channel_names, 
@@ -403,33 +409,33 @@ def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
 
 
 
-if __name__ == '__main__':
-  import argparse
-  import glob
-  parser = argparse.ArgumentParser()
-  parser.add_argument('cell_file')
-  parser.add_argument('image_dir')
-  parser.add_argument('out_file')
-
-  parser.add_argument('--size', type=int, default=64)
-  parser.add_argument('--min_area', type=int, default=None)
-
-  ARGS = parser.parse_args()
-  cells = pd.read_csv(ARGS.cell_file, index_col=0, header=0)
-  imagefs = glob.glob(f'{ARGS.image_dir}/*.tif')
-  dapi_images = [f for f in imagefs if 'DAPI' in f]
-  non_dapi_images = [f for f in imagefs if 'DAPI' not in f]
-  non_dapi_images = [f for f in non_dapi_images if 'Blank' not in f]
-  non_dapi_images = [f for f in non_dapi_images if 'Empty' not in f]
-
-  channel_names = [os.path.basename(x) for x in non_dapi_images]
-  channel_names = [x.replace(f'.tif','') for x in channel_names]
-  channel_names = [x.split('_')[-2] for x in channel_names]
-  # channel_names = [x.replace('-', '_') for x in channel_names]
-  channel_names = ["DAPI"] + channel_names
-
-  image_paths = [dapi_images[0]] + non_dapi_images
-  #image_handles = [pytiff.Tiff(dapi_images[0])] + [pytiff.Tiff(f) for f in non_dapi_images]
-  pull_nuclei(cells, image_paths, out_file=ARGS.out_file, 
-              size=ARGS.size, min_area=ARGS.min_area, 
-              channel_names=channel_names)
+# if __name__ == '__main__':
+#   import argparse
+#   import glob
+#   parser = argparse.ArgumentParser()
+#   parser.add_argument('cell_file')
+#   parser.add_argument('image_dir')
+#   parser.add_argument('out_file')
+# 
+#   parser.add_argument('--size', type=int, default=64)
+#   parser.add_argument('--min_area', type=int, default=None)
+# 
+#   ARGS = parser.parse_args()
+#   cells = pd.read_csv(ARGS.cell_file, index_col=0, header=0)
+#   imagefs = glob.glob(f'{ARGS.image_dir}/*.tif')
+#   dapi_images = [f for f in imagefs if 'DAPI' in f]
+#   non_dapi_images = [f for f in imagefs if 'DAPI' not in f]
+#   non_dapi_images = [f for f in non_dapi_images if 'Blank' not in f]
+#   non_dapi_images = [f for f in non_dapi_images if 'Empty' not in f]
+# 
+#   channel_names = [os.path.basename(x) for x in non_dapi_images]
+#   channel_names = [x.replace(f'.tif','') for x in channel_names]
+#   channel_names = [x.split('_')[-2] for x in channel_names]
+#   # channel_names = [x.replace('-', '_') for x in channel_names]
+#   channel_names = ["DAPI"] + channel_names
+# 
+#   image_paths = [dapi_images[0]] + non_dapi_images
+#   #image_handles = [pytiff.Tiff(dapi_images[0])] + [pytiff.Tiff(f) for f in non_dapi_images]
+#   pull_nuclei(cells, image_paths, out_file=ARGS.out_file, 
+#               size=ARGS.size, min_area=ARGS.min_area, 
+#               channel_names=channel_names)
