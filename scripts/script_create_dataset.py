@@ -26,7 +26,7 @@ parser.add_argument('-o', '--out_dir', type=str, required=True)
 
 parser.add_argument('--size', default=64, type=int)
 parser.add_argument('--min_area', default=50, type=int)
-parser.add_argument('--tile_size', default=256, type=int)
+parser.add_argument('--tile_size', default=128, type=int)
 parser.add_argument('--overlap', default=0.2, type=float)
 parser.add_argument('--tile_scale_factor', default=1., type=float)
 parser.add_argument('--debug', action='store_true')
