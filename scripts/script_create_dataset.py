@@ -38,7 +38,7 @@ cells = pd.read_csv(f'{ARGS.datahome}/{ARGS.sample_id}/{ARGS.sample_id}_2_cells.
 nuclei_img = f'{ARGS.datahome}/{ARGS.sample_id}/{ARGS.sample_id}_2_nuclei.tif'
 membrane_img = f'{ARGS.datahome}/{ARGS.sample_id}/{ARGS.sample_id}_2_membrane.tif'
 
-imagefs = sorted(glob.glob(f'{datahome}/{sample_id}/images/*.tif'))
+imagefs = sorted(glob.glob(f'{ARGS.datahome}/{ARGS.sample_id}/images/*.tif'))
 dapi_images = [f for f in imagefs if 'DAPI' in f]
 non_dapi_images = [f for f in imagefs if 'DAPI' not in f]
 non_dapi_images = [f for f in non_dapi_images if 'Blank' not in f]
@@ -59,6 +59,7 @@ pull_nuclei(cells,
             image_paths, 
             out_file=out_file, 
             nuclei_img=nuclei_img,
+            membrane_img=None,
             size=ARGS.size,
             min_area=ARGS.min_area, 
             tile_size=ARGS.tile_size,

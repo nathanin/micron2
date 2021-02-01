@@ -69,6 +69,15 @@ def stream_dataset(fpath, use_channels=['DAPI', 'CD45', 'PanCytoK'], group_name=
   Layer on shuffle and perturb transformations later
 
   We need to extend this to ingest multiple source files at a time.
+
+  Args:
+    fpath (str): file name (put it on a fast device)
+    use_channels (list): datasets found under the group name
+    group_name (str): top level group to use
+
+  Returns:
+    dataset (tf.data.Dataset)
+
   """
   channel_ds = [tfio.IODataset.from_hdf5(fpath, f'/{group_name}/{c}') for c in use_channels]
   dataset = (tf.data.Dataset.zip(tuple(channel_ds))
