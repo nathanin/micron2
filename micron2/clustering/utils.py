@@ -35,9 +35,9 @@ def cluster_leiden(features, neighbors=10, resolution=0.6, n_jobs=8):
   return groups
 
 
-def cluster_leiden_cu(features, neighbors=10, resolution=0.6  ):
+def cluster_leiden_cu(features, neighbors=10, resolution=0.6, nn_metric='euclidean'):
   X_cudf = cudf.DataFrame(features)
-  model = NearestNeighbors(n_neighbors=neighbors)
+  model = NearestNeighbors(n_neighbors=neighbors, output_type='numpy', metric=nn_metric)
   model.fit(features)
 
   kn_graph = model.kneighbors_graph(X_cudf)
@@ -49,7 +49,7 @@ def cluster_leiden_cu(features, neighbors=10, resolution=0.6  ):
   parts, mod_score = cugraph.leiden(G, resolution=resolution)
   groups = cp.asnumpy(parts['partition'].values)
 
-  groups = np.array([f'{c:02}' for c in groups])
+  # groups = np.array([f'{c:02}' for c in groups])
   # groups = np.array([f'{c:02}' for c in groups], dtype='S')
   return groups
 

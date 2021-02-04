@@ -120,7 +120,9 @@ def get_channel_means(h5f, group_name='intensity',
 
 
 def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img, 
-                          channel_names, scale_factor, debug=False):
+                          channel_names, scale_factor, low_cutoff=4, debug=False):
+  """ Pull raw data from the images provided according to coordinate locations
+  """
   h0 = pytiff.Tiff(image_paths[0])
   sizeh = int(size/2)
   h, w = h0.shape
@@ -160,7 +162,9 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
       pbar.set_description(f'Pulling nuclei from channel {c}')
       for x, y in pbar:
         bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
-        img = (255 * (page[bbox[0]:bbox[1], bbox[2]:bbox[3]] / 2**16)).astype(np.uint8)
+        img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
+        img_raw[img_raw<low_cutoff] = 0
+        img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
 
         if scale_factor != 1:
           # img = cv2.resize(img, dsize=(0,0), fx=scale_factor, fy=scale_factor)
@@ -277,7 +281,7 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
     page = h.pages[0][:]
     
     i = 0
-    with tqdm(coords, total=coords.shape[0]) as pbar:
+    with tqdm(coords, total=len(coords)) as pbar:
       pbar.set_description(f'Pulling tiles from channel {c}')
       for coord in pbar:
         y, x = coord
@@ -337,17 +341,12 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
 def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
                 membrane_img=None, size=64, min_area=100, scale_factor=1., tile_scale_factor=1.,
                 overlap=0, tile_size=256, channel_names=None, 
+                skip_tiles=False,
                 debug=False):
   """
   Build a codex image dataset
 
   ** NOTE this function converts image data from uint16 to uint8 by default **
-
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  
-  WHAT TO DO WITH MULTIPLE SLIDES
-
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   Creates an hdf5 file with datasets like:
     cells/DAPI
@@ -400,10 +399,9 @@ def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
   create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img,
                         channel_names, scale_factor, debug=debug)
 
-  create_image_dataset(image_paths, h5f, tile_size, channel_names, 
-                       tile_scale_factor, overlap, min_area, debug=debug)
-
-  
+  if not skip_tiles:
+    create_image_dataset(image_paths, h5f, tile_size, channel_names, 
+                        tile_scale_factor, overlap, min_area, debug=debug)
 
   h5f.close()
 
