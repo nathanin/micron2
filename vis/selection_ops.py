@@ -5,7 +5,7 @@ import logging
 from matplotlib.colors import rgb2hex
 from bokeh.models import Range1d
 
-from micron2.codexutils import get_images, blend_images
+from micron2.codexutils import get_images, blend_images, load_nuclei_mask
 
 # def make_logger():
 logger = logging.getLogger('viewer')
@@ -77,8 +77,29 @@ def maybe_pull(use_channels, active_raw_images, image_sources, bbox):
   return images
 
 
+def _get_active_image_channels(widgets):
+  use_channels = []
+  for k, w in widgets.items():
+    if 'nuclei' in k:
+      continue
+    if 'focus_channel' in k:
+      ch = w.label
+      if w.active:
+        logger.info(f'requested to draw channel {ch}')
+        use_channels.append(ch)
+  return use_channels
+
+# https://docs.bokeh.org/en/latest/docs/gallery/color_sliders.html
+def hex_to_dec(hex):
+  red = ''.join(hex.strip('#')[0:2])
+  green = ''.join(hex.strip('#')[2:4])
+  blue = ''.join(hex.strip('#')[4:6])
+  return np.array((int(red, 16), int(green, 16), int(blue,16), 255))
+
+
 def update_image_plot(shared_variables, widgets, figure_sources, figures):
-  use_channels = shared_variables['use_channels']
+  # use_channels = shared_variables['use_channels']
+  use_channels = _get_active_image_channels(widgets)
   channel_colors = shared_variables['channel_colors']
   saturation_vals = shared_variables['saturation_vals']
   bbox = shared_variables['bbox']
@@ -92,7 +113,7 @@ def update_image_plot(shared_variables, widgets, figure_sources, figures):
     logger.info('No bbox to draw')
     return
 
-  images = maybe_pull(shared_variables['use_channels'],
+  images = maybe_pull(use_channels,
                       shared_variables['active_raw_images'],
                       shared_variables['image_sources'],
                       shared_variables['bbox'])
@@ -100,18 +121,36 @@ def update_image_plot(shared_variables, widgets, figure_sources, figures):
   colors = []
   for c in use_channels:
     chc = (np.array(channel_colors[c])*255).astype(np.uint8)
-    logger.info(f'setting color {c} {chc}')
+    logger.info(f'drawing channel {c} with color {chc}')
     colors.append(chc)
 
   colors = np.stack(colors, axis=0)
   saturation = []
-  for c in use_channels:
+  for i,c in enumerate(use_channels):
     s = saturation_vals[c] 
-    if s is None:
-      s = np.quantile(s, 0.95)
+    if (s is None) or (s == 0):
+      img = images[:,:,i]
+      if img.sum() == 0:
+        s = 0
+      else:
+        vals = img.ravel()[img.ravel()>0]
+        s = np.quantile(vals, 0.99)
+
+    # make sure the saturation val widget reflects the value being drawn
+    widgets[f'color_saturation_{c}'].value = s
+
     saturation.append(s)
 
-  blended = blend_images(images, saturation_vals=saturation, colors=colors)
+  if widgets['focus_channel_nuclei'].active:
+    nuclei = load_nuclei_mask(shared_variables['nuclei_path'], shared_variables['bbox'])
+    nuclei_color = widgets['color_picker_nuclei'].color
+    nuclei_color = hex_to_dec(nuclei_color)
+    logger.info(f'drawing nuclei with color {nuclei_color}')
+  else:
+    nuclei = None
+    nuclei_color = None
+  blended = blend_images(images, saturation_vals=saturation, colors=colors, 
+                         nuclei=nuclei, nuclei_color=nuclei_color)
   blended = blended[::-1,:] # flip
 
   ## Set the aspect ratio according to the selected area

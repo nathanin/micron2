@@ -20,10 +20,12 @@ from tensorflow.keras.layers.experimental.preprocessing import (
 
 
 class Encoder(tf.keras.Model):
-  def __init__(self, input_shape=[64, 64, 3], g_network=True):
+  def __init__(self, input_shape=[64, 64, 3], z_dim=128, g_network=True):
+    """ Encode an image into a reduced 1D representation """
     super(Encoder, self).__init__()
     self.n_channels = input_shape[-1]
     self.x_size = input_shape[0]
+    self.z_dim = z_dim
     
     # perturb functions
     # self.contrast = RandomContrast()
@@ -45,7 +47,7 @@ class Encoder(tf.keras.Model):
     self.flat = Flatten()
 
     self.dense_1 = Dense(512, activation='relu')
-    self.dense_2 = Dense(256, activation=None)
+    self.dense_2 = Dense(self.z_dim, activation=None)
 
     self.g_network = g_network
     if self.g_network:

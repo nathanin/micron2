@@ -37,7 +37,7 @@ def cluster_leiden(features, neighbors=10, resolution=0.6, n_jobs=8):
 
 def cluster_leiden_cu(features, neighbors=10, resolution=0.6  ):
   X_cudf = cudf.DataFrame(features)
-  model = NearestNeighbors(n_neighbors=neighbors)
+  model = NearestNeighbors(n_neighbors=neighbors, output_type='numpy')
   model.fit(features)
 
   kn_graph = model.kneighbors_graph(X_cudf)

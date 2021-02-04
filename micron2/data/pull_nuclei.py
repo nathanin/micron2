@@ -337,17 +337,12 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
 def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
                 membrane_img=None, size=64, min_area=100, scale_factor=1., tile_scale_factor=1.,
                 overlap=0, tile_size=256, channel_names=None, 
+                skip_tiles=False,
                 debug=False):
   """
   Build a codex image dataset
 
   ** NOTE this function converts image data from uint16 to uint8 by default **
-
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  
-  WHAT TO DO WITH MULTIPLE SLIDES
-
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   Creates an hdf5 file with datasets like:
     cells/DAPI
@@ -400,10 +395,9 @@ def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
   create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img,
                         channel_names, scale_factor, debug=debug)
 
-  create_image_dataset(image_paths, h5f, tile_size, channel_names, 
-                       tile_scale_factor, overlap, min_area, debug=debug)
-
-  
+  if not skip_tiles:
+    create_image_dataset(image_paths, h5f, tile_size, channel_names, 
+                        tile_scale_factor, overlap, min_area, debug=debug)
 
   h5f.close()
 

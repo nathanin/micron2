@@ -1,6 +1,6 @@
 # Micron<sup>2</sup> :microscope:
 
-![data](vis/bokeh_plot.png)
+![data](vis/micron2_viewer_preview.png)
 
 *****  
 
