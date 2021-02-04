@@ -160,7 +160,11 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
       pbar.set_description(f'Pulling nuclei from channel {c}')
       for x, y in pbar:
         bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
-        img = (255 * (page[bbox[0]:bbox[1], bbox[2]:bbox[3]] / 2**16)).astype(np.uint8)
+        img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
+        img_raw_nz = img_raw>0
+        img = (255 * (img_raw / 2**16)).astype(np.uint8)
+        img_z = img==0
+        img[img_z & img_raw_nz] = 1 #Force a minimum value
 
         if scale_factor != 1:
           # img = cv2.resize(img, dsize=(0,0), fx=scale_factor, fy=scale_factor)
