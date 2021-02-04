@@ -120,7 +120,9 @@ def get_channel_means(h5f, group_name='intensity',
 
 
 def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img, 
-                          channel_names, scale_factor, debug=False):
+                          channel_names, scale_factor, low_cutoff=4, debug=False):
+  """ Pull raw data from the images provided according to coordinate locations
+  """
   h0 = pytiff.Tiff(image_paths[0])
   sizeh = int(size/2)
   h, w = h0.shape
@@ -161,10 +163,8 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
       for x, y in pbar:
         bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
         img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
-        img_raw_nz = img_raw>0
-        img = (255 * (img_raw / 2**16)).astype(np.uint8)
-        img_z = img==0
-        img[img_z & img_raw_nz] = 1 #Force a minimum value
+        img_raw[img_raw<low_cutoff] = 0
+        img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
 
         if scale_factor != 1:
           # img = cv2.resize(img, dsize=(0,0), fx=scale_factor, fy=scale_factor)
