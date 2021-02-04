@@ -209,7 +209,7 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
 
 
 def create_image_dataset(image_paths, h5f, size, channel_names, 
-                         scale_factor, overlap, min_area, debug=False):
+                         scale_factor, overlap, min_area, low_cutoff=4, debug=False):
 
   h0 = pytiff.Tiff(image_paths[0])
   sizeh = int(size/2)
@@ -286,8 +286,10 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
       for coord in pbar:
         y, x = coord
         # bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
-        bbox = [x, x+size, y, y+size]
-        img = (255 * (page[bbox[0]:bbox[1], bbox[2]:bbox[3]] / 2**16)).astype(np.uint8)
+        bbox = [x, x+size, y, y+size] 
+        img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
+        img_raw[img_raw < low_cutoff] = 0
+        img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
 
         if scale_factor != 1:
           # img = cv2.resize(img, dsize=(0,0), fx=scale_factor, fy=scale_factor)
