@@ -277,7 +277,7 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
     page = h.pages[0][:]
     
     i = 0
-    with tqdm(coords, total=coords.shape[0]) as pbar:
+    with tqdm(coords, total=len(coords)) as pbar:
       pbar.set_description(f'Pulling tiles from channel {c}')
       for coord in pbar:
         y, x = coord

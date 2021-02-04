@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env python
 
 from micron2.data import pull_nuclei
 from micron2.data import load_as_anndata
