@@ -17,6 +17,7 @@ from bokeh.plotting import figure
 import glob
 import seaborn as sns
 from matplotlib.colors import rgb2hex
+from scipy.sparse import issparse
 
 from bokeh.themes import built_in_themes
 
@@ -35,31 +36,43 @@ from .boxplot import BokehBoxPlot
 # from .selection_ops import logger as logg
 # logger = make_logger()
 
-data_dir = '/home/ingn/tmp/micron2-data/preprocessed_data'
-sample_id = '201021_BreastFFPE_Final'
+# data_dir = '/home/ingn/tmp/micron2-data/preprocessed_data'
+# sample_id = '201021_BreastFFPE_Final'
+# default_annotation = 'annotation'
 
-adata_path = f"{data_dir}/{sample_id}/{sample_id}.h5ad"
+#----------------------------------------------------------- #
+#                      Input data                            #
+#----------------------------------------------------------- #
+data_dir = '/storage/codex/preprocessed_data'
+sample_id = '210113_Breast_Cassette11'
+region_num = 1
+default_annotation = 'annotation_subtype_cleaned'
+
+full_sample_id = f'{sample_id}_reg{region_num}'
+
+adata_path = f"{data_dir}/{full_sample_id}/{full_sample_id}.h5ad"
 logger.info(f'loading anndata: {adata_path}')
 ad = sc.read_h5ad(adata_path)
 
 logger.info(f'scaling values for display')
 sc.pp.log1p(ad)
 
-logger.info(f'Visualizing {ad.shape[0]} cells')
+logger.info(f'Visualizing {ad.shape} cells x variables')
 data = ad.obs.copy()
-data[ad.var_names.tolist()] = pd.DataFrame(ad.X.copy(), index=ad.obs_names, columns=ad.var_names)
+if issparse(ad.X):
+  data[ad.var_names.tolist()] = pd.DataFrame(ad.X.toarray(), index=ad.obs_names, columns=ad.var_names)
+else:
+  data[ad.var_names.tolist()] = pd.DataFrame(ad.X.copy(), index=ad.obs_names, columns=ad.var_names)
 data['index_num'] = np.arange(data.shape[0])
 data['coordinates_1'] = ad.obsm['coordinates'][:,0]
 data['coordinates_2'] = ad.obsm['coordinates'][:,1]
 
-# color_map = {k: v for k, v in zip(np.unique(ad.obs.mean_leiden), ad.uns['mean_leiden_colors'])}
-n_clusters = len(np.unique(ad.obs.mean_leiden))
+n_clusters = len(np.unique(ad.obs[default_annotation]))
 cluster_colors = sns.color_palette('Set1', n_clusters)
 cluster_colors = np.concatenate([cluster_colors, np.ones((n_clusters, 1))], axis=1)
-color_map = {k: rgb2hex(v) for k, v in zip(np.unique(ad.obs.mean_leiden), cluster_colors)}
+color_map = {k: rgb2hex(v) for k, v in zip(np.unique(ad.obs[default_annotation]), cluster_colors)}
 
-data['color'] = [color_map[g] for g in ad.obs.mean_leiden]
-# data['active_color'] = [color_map[g] for g in ad.obs.mean_leiden]
+data['color'] = [color_map[g] for g in ad.obs[default_annotation]]
 
 # coords are stored with Y inverted for plotting with matplotlib.. flip it back for pulling from the images.
 coords = ad.obsm['coordinates']
@@ -69,8 +82,8 @@ coords[:,1] = -coords[:,1]
 background_color = '#636363'
 desc = Div(text=open(join(dirname(__file__), "description.html")).read(), sizing_mode="stretch_width")
 
-def get_channel_image_path(data_dir, sample_id, channel):
-  image_paths = glob.glob(f'{data_dir}/{sample_id}/images/*.tif')
+def get_channel_image_path(data_dir, full_sample_id, channel):
+  image_paths = glob.glob(f'{data_dir}/{full_sample_id}/images/*.tif')
   for p in image_paths:
     if channel in p:
       return p
@@ -80,7 +93,7 @@ def get_channel_image_path(data_dir, sample_id, channel):
 #                      Shared variables
 ## -------------------------------------------------------------------
 
-clusters = np.array(ad.obs.mean_leiden)
+clusters = np.array(ad.obs[default_annotation])
 all_clusters = list(np.unique(clusters))
 # all_channels = [k for k, i in ad.uns['image_sources'].items()]
 all_channels = sorted(ad.var_names.to_list())
@@ -88,7 +101,7 @@ active_raw_images = {c: None for c in all_channels}
 saturation_vals = {c: 0 for c in all_channels} # TODO config default saturation values
 neighbor_indices = get_neighbors(coords)
 
-image_sources = {c: get_channel_image_path(data_dir, sample_id, c) for c in all_channels}
+image_sources = {c: get_channel_image_path(data_dir, full_sample_id, c) for c in all_channels}
 for k,v in image_sources.items():
   logger.info(f'{k}: {v}')
 
@@ -97,7 +110,7 @@ channel_colors = np.concatenate([channel_colors, np.ones((len(all_channels), 1))
 channel_colors = {c: color for c, color in zip(all_channels, channel_colors)}
 
 # path for nuclear segmentation
-nuclei_path = f'{data_dir}/{sample_id}/{sample_id}_2_nuclei.tif'
+nuclei_path = f'{data_dir}/{full_sample_id}/{full_sample_id}_2_nuclei.tif'
 
 shared_variables = dict(
   clusters = clusters,
@@ -190,8 +203,7 @@ for ch in all_channels:
 
 dummy_data = np.zeros((5,5), dtype=np.uint32)
 figure_sources = dict(
-  # scatter_bg = ColumnDataSource(data=dict(x=[], y=[], index=[], mean_leiden=[], z_leiden=[])),
-  scatter_fg = ColumnDataSource(data=dict(x=[], y=[], s=[], index=[], mean_leiden=[], color=[])),
+  scatter_fg = ColumnDataSource(data=dict(x=[], y=[], s=[], index=[], annotation=[], color=[])),
   image_data = ColumnDataSource({'value': [], 'dw': [], 'dh': []}),
   cluster_hist = ColumnDataSource({'value': [0]*len(all_clusters), 'x': all_clusters}),
   neighbor_hist = ColumnDataSource({'value': [0]*len(all_clusters), 'x': all_clusters}),
@@ -205,7 +217,7 @@ figure_sources = dict(
 # Draw a canvas with an appropriate aspect ratio
 TOOLTIPS=[
     ("Index", "@index"),
-    ("Mean cluster", "@mean_leiden"),
+    ("Mean cluster", "@annotation"),
     # ("Morph cluster", "@z_leiden"),
 ]
 dx = np.abs(data.coordinates_1.max() - data.coordinates_1.min())
@@ -244,29 +256,31 @@ phist = figure(x_range=all_clusters,
                title="",
                x_axis_label='Clusters',
                y_axis_label='Cells',
-               plot_height=int(width/2), 
+               plot_height=int(height*0.7), 
                toolbar_location=None,
                output_backend='webgl')
 phist.vbar(x='x', top='value',  source=figure_sources['cluster_hist'], width=0.9)
 phist.xgrid.grid_line_color = None
-phist.xaxis.axis_label_text_font_size = '16pt'
-phist.yaxis.axis_label_text_font_size = '16pt'
-phist.xaxis.major_label_text_font_size = '12pt'
-phist.yaxis.major_label_text_font_size = '12pt'
+phist.xaxis.axis_label_text_font_size = '12pt'
+phist.yaxis.axis_label_text_font_size = '12pt'
+phist.xaxis.major_label_text_font_size = '8pt'
+phist.yaxis.major_label_text_font_size = '10pt'
+phist.xaxis.major_label_orientation = np.pi/2
 
 pnhist = figure(x_range=all_clusters, 
                title="",
                x_axis_label='Clusters',
                y_axis_label='Cells',
-               plot_height=int(width/2), 
+               plot_height=int(height*0.7), 
                toolbar_location=None,
                output_backend='webgl')
 pnhist.vbar(x='x', top='value',  source=figure_sources['neighbor_hist'], width=0.9)
 pnhist.xgrid.grid_line_color = None
-pnhist.xaxis.axis_label_text_font_size = '16pt'
-pnhist.yaxis.axis_label_text_font_size = '16pt'
-pnhist.xaxis.major_label_text_font_size = '12pt'
-pnhist.yaxis.major_label_text_font_size = '12pt'
+pnhist.xaxis.axis_label_text_font_size = '12pt'
+pnhist.yaxis.axis_label_text_font_size = '12pt'
+pnhist.xaxis.major_label_text_font_size = '8pt'
+pnhist.yaxis.major_label_text_font_size = '10pt'
+pnhist.xaxis.major_label_orientation = np.pi/2
 
 ## -------------------------------------------------------------------
 #        Create a histogram of the image channel we're editing
@@ -389,7 +403,8 @@ def handle_clear_channels(*args):
 
 def get_selected_clusters():
   cluster_vals = widgets['cluster_select'].active
-  cluster_vals = [f'{d:02d}' for d in cluster_vals]
+  # cluster_vals = [f'{d:02d}' for d in cluster_vals]
+  cluster_vals = [all_clusters[d] for d in cluster_vals]
   logger.info(f'setting selected clusters to: {cluster_vals}')
 
   cluster_vect = shared_variables['clusters']
@@ -506,7 +521,7 @@ def update_scatter():
     y=data['coordinates_2'],
     s=sizes,
     index=data['index_num'],
-    mean_leiden=data['mean_leiden'],
+    annotation=data[default_annotation], # have to change this to allow switching the shown annotations
     active_color=fg_colors,
   )
   update_clusters_hist()

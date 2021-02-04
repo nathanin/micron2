@@ -90,9 +90,18 @@ def _merge_image_datasets(h5fout, h5fs, dataset, channel, size):
     Nothing
   """
   total_size = 0
+  has_dataset = []
   for h5f in h5fs:
     with h5py.File(h5f,'r') as f:
-      total_size += f[f'{dataset}/{channel}'].shape[0]
+      try:
+        total_size += f[f'{dataset}/{channel}'].shape[0]
+        has_dataset.append(True)
+      except:
+        has_dataset.append(False)
+
+  if not all(has_dataset):
+    print(f'Error merging dataset {dataset}/{channel}. Skipping...')
+    return None
   
   print(f'Merging {dataset}/{channel} with {total_size} total elements from {len(h5fs)} files')
 
