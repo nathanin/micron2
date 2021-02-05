@@ -95,7 +95,7 @@ def get_channel_means(h5f, group_name='intensity',
 
   for channel in channel_names:
     data_stack = h5f[f'cells/{channel}'][:]
-    with tqdm(range(n_cells), total=n_cells) as pbar:
+    with tqdm(range(n_cells), total=n_cells, disable=None) as pbar:
       pbar.set_description(f'Channel {channel}')
       for i in pbar:
         data = data_stack[i]
@@ -158,7 +158,7 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
     page = h.pages[0][:]
     
     i = 0
-    with tqdm(zip(coords.X, coords.Y), total=coords.shape[0]) as pbar:
+    with tqdm(zip(coords.X, coords.Y), total=coords.shape[0], disable=None) as pbar:
       pbar.set_description(f'Pulling nuclei from channel {c}')
       for x, y in pbar:
         bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
@@ -281,7 +281,7 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
     page = h.pages[0][:]
     
     i = 0
-    with tqdm(coords, total=len(coords)) as pbar:
+    with tqdm(coords, total=len(coords), disable=None) as pbar:
       pbar.set_description(f'Pulling tiles from channel {c}')
       for coord in pbar:
         y, x = coord
