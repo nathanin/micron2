@@ -4,6 +4,8 @@ import pandas as pd
 import h5py
 import warnings
 
+from scipy.sparse import csr_matrix
+
 # For deserializing tile / nuclei relationship dictionary
 # https://stackoverflow.com/a/48101771
 import ast
@@ -19,6 +21,7 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
                     with_images=True,  # unused
                     recover_tile_nuclei=True,
                     keep_open=False,
+                    as_sparse=True,
                     obsm=None):
   """
   Load a codex image dataset into an AnnData object
@@ -115,7 +118,7 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
     tile_nuclei = ast.literal_eval(h5f['images'].attrs['tile_encapsulated_cells'])
     uns_dict['tile_nuclei'] = tile_nuclei
 
-  uns_dict['image_sources'] = ast.literal_eval(h5f['meta'].attrs['image_sources'])
+  # uns_dict['image_sources'] = ast.literal_eval(h5f['meta'].attrs['image_sources'])
 
   # ----------------------------- / Build UNS -----------------------------------
 
@@ -124,7 +127,9 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
     for feature_name in feature_names:
       feature_names.append(f'{feature_name}_membrane')
 
-  adata = AnnData(features, 
+  print(f'Features are {100*(features==0).sum()/np.prod(features.shape):2.2f}% zeros')
+
+  adata = AnnData(csr_matrix(features) if as_sparse else features, 
                   obs=pd.DataFrame(index=cell_ids),
                   var=pd.DataFrame(index=channel_names),
                   obsm=obsm_dict,

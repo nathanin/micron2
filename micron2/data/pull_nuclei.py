@@ -95,7 +95,7 @@ def get_channel_means(h5f, group_name='intensity',
 
   for channel in channel_names:
     data_stack = h5f[f'cells/{channel}'][:]
-    with tqdm(range(n_cells), total=n_cells) as pbar:
+    with tqdm(range(n_cells), total=n_cells, disable=None) as pbar:
       pbar.set_description(f'Channel {channel}')
       for i in pbar:
         data = data_stack[i]
@@ -120,7 +120,9 @@ def get_channel_means(h5f, group_name='intensity',
 
 
 def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img, 
-                          channel_names, scale_factor, debug=False):
+                          channel_names, scale_factor, low_cutoff=4, debug=False):
+  """ Pull raw data from the images provided according to coordinate locations
+  """
   h0 = pytiff.Tiff(image_paths[0])
   sizeh = int(size/2)
   h, w = h0.shape
@@ -156,11 +158,13 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
     page = h.pages[0][:]
     
     i = 0
-    with tqdm(zip(coords.X, coords.Y), total=coords.shape[0]) as pbar:
+    with tqdm(zip(coords.X, coords.Y), total=coords.shape[0], disable=None) as pbar:
       pbar.set_description(f'Pulling nuclei from channel {c}')
       for x, y in pbar:
         bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
-        img = (255 * (page[bbox[0]:bbox[1], bbox[2]:bbox[3]] / 2**16)).astype(np.uint8)
+        img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
+        img_raw[img_raw<low_cutoff] = 0
+        img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
 
         if scale_factor != 1:
           # img = cv2.resize(img, dsize=(0,0), fx=scale_factor, fy=scale_factor)
@@ -277,7 +281,7 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
     page = h.pages[0][:]
     
     i = 0
-    with tqdm(coords, total=len(coords)) as pbar:
+    with tqdm(coords, total=len(coords), disable=None) as pbar:
       pbar.set_description(f'Pulling tiles from channel {c}')
       for coord in pbar:
         y, x = coord
