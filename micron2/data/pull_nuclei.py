@@ -52,7 +52,7 @@ def get_masks(nuclei_img, xy_coords, sizeh, write_size):
   labelimg, n_labels = label(img, connectivity=1, return_num=True)
 
   masks = []
-  for c in tqdm(xy_coords, total=len(xy_coords)):
+  for c in tqdm(xy_coords, total=len(xy_coords), disable=None):
       x, y = c
       bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
       subimg = labelimg[bbox[0]:bbox[1], bbox[2]:bbox[3]]
