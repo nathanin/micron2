@@ -62,7 +62,7 @@ pull_nuclei(cells,
             image_paths, 
             out_file=out_file, 
             nuclei_img=nuclei_img,
-            membrane_img=None,
+            membrane_img=membrane_img,
             size=ARGS.size,
             min_area=ARGS.min_area, 
             tile_size=ARGS.tile_size,
@@ -72,3 +72,4 @@ pull_nuclei(cells,
             debug=ARGS.debug
            )
 
+print(f'create dataset at {out_file}: success')
