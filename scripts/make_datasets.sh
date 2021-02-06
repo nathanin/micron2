@@ -2,7 +2,7 @@
 #$ -V
 #$ -cwd
 #$ -j y
-#$ -l mem_free=32G,h=csclprd3-c049.local
+#$ -l mem_free=32G
 
 siffile=/home/ingn/sifs/micron-interactive.sif
 
@@ -12,6 +12,8 @@ TZ=America/Los_Angeles date
 
 echo $@
 
+# Make sure the host we're on has AVX and AVX2 available
+# TensorFlow binaries are compiled with AVX on and segfault out if the CPU doesn't have those instructions
 if [[ -z `lscpu | grep avx` ]]
 then 
   echo "avx instructions not found"
