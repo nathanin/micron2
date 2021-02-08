@@ -22,7 +22,8 @@ ingnored
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--datahome', type=str, required=True)
 parser.add_argument('-s', '--sample_id', type=str, required=True)
-# parser.add_argument('-o', '--out_dir', type=str, required=True)
+parser.add_argument('-r', '--region_num', type=int, required=True)
+#parser.add_argument('-o', '--out_dir', type=str, required=True)
 
 parser.add_argument('--size', default=64, type=int)
 parser.add_argument('--min_area', default=50, type=int)
@@ -34,11 +35,13 @@ parser.add_argument('--debug', action='store_true')
 
 ARGS=parser.parse_args()
 
-cells = pd.read_csv(f'{ARGS.datahome}/{ARGS.sample_id}/{ARGS.sample_id}_2_cells.csv', index_col=0, header=0)
-nuclei_img = f'{ARGS.datahome}/{ARGS.sample_id}/{ARGS.sample_id}_2_nuclei.tif'
-membrane_img = f'{ARGS.datahome}/{ARGS.sample_id}/{ARGS.sample_id}_2_membrane.tif'
+full_sample_id = f'{ARGS.sample_id}_reg{ARGS.region_num}'
 
-imagefs = sorted(glob.glob(f'{ARGS.datahome}/{ARGS.sample_id}/images/*.tif'))
+cells = pd.read_csv(f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}_2_centroids.csv', index_col=0, header=0)
+nuclei_img = f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}_2_nuclei.tif'
+membrane_img = f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}_2_membrane.tif'
+
+imagefs = sorted(glob.glob(f'{ARGS.datahome}/{full_sample_id}/images/*.tif'))
 dapi_images = [f for f in imagefs if 'DAPI' in f]
 non_dapi_images = [f for f in imagefs if 'DAPI' not in f]
 non_dapi_images = [f for f in non_dapi_images if 'Blank' not in f]
@@ -53,13 +56,13 @@ print(len(channel_names))
 image_paths = [dapi_images[0]] + non_dapi_images
 print(len(image_paths))
 
-out_file = f'{ARGS.datahome}/{ARGS.sample_id}/{ARGS.sample_id}.hdf5'
+out_file = f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}.hdf5'
 
 pull_nuclei(cells, 
             image_paths, 
             out_file=out_file, 
             nuclei_img=nuclei_img,
-            membrane_img=None,
+            membrane_img=membrane_img,
             size=ARGS.size,
             min_area=ARGS.min_area, 
             tile_size=ARGS.tile_size,
@@ -68,3 +71,5 @@ pull_nuclei(cells,
             tile_scale_factor=ARGS.tile_scale_factor,
             debug=ARGS.debug
            )
+
+print(f'create dataset at {out_file}: success')

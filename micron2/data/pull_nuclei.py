@@ -15,6 +15,7 @@ except:
 
 from skimage.measure import label
 from skimage.transform import downscale_local_mean
+from skimage.filters import threshold_otsu
 from tqdm.auto import tqdm
 
 """
@@ -52,7 +53,7 @@ def get_masks(nuclei_img, xy_coords, sizeh, write_size):
   labelimg, n_labels = label(img, connectivity=1, return_num=True)
 
   masks = []
-  for c in tqdm(xy_coords, total=len(xy_coords)):
+  for c in tqdm(xy_coords, total=len(xy_coords), disable=None):
       x, y = c
       bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
       subimg = labelimg[bbox[0]:bbox[1], bbox[2]:bbox[3]]
@@ -95,7 +96,7 @@ def get_channel_means(h5f, group_name='intensity',
 
   for channel in channel_names:
     data_stack = h5f[f'cells/{channel}'][:]
-    with tqdm(range(n_cells), total=n_cells) as pbar:
+    with tqdm(range(n_cells), total=n_cells, disable=None) as pbar:
       pbar.set_description(f'Channel {channel}')
       for i in pbar:
         data = data_stack[i]
@@ -174,14 +175,30 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
   for pth, d, c in zip(image_paths, datasets, channel_names):
     h = pytiff.Tiff(pth)
     page = h.pages[0][:]
+
+    # TODO allow changing background size
+    ncells = coords.shape[0]
+    background_ids = np.random.choice(ncells, min(ncells,2500), replace=False)
+    background_imgs = []
+    for i in background_ids:
+      x = coords.X[i]
+      y = coords.Y[i]
+      bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
+      img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
+      background_imgs.append(img_raw.ravel().copy())
+
+    background_imgs = np.concatenate(background_imgs).ravel()
+    thr = threshold_otsu(background_imgs)/2
     
     i = 0
-    with tqdm(zip(coords.X, coords.Y), total=coords.shape[0]) as pbar:
+    with tqdm(zip(coords.X, coords.Y), total=coords.shape[0], disable=None) as pbar:
       pbar.set_description(f'Pulling nuclei from channel {c}')
       for x, y in pbar:
         bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
         img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
-        img_raw[img_raw<low_cutoff] = 0
+        #thr = threshold_otsu(img_raw)
+        #img_raw[img_raw<low_cutoff] = 0
+        img_raw[img_raw<thr] = 0
         img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
 
         if scale_factor != 1:
@@ -282,17 +299,40 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
   for pth, d, c in zip(image_paths, datasets, channel_names):
     h = pytiff.Tiff(pth)
     page = h.pages[0][:]
+
+    # TODO allow changing background size
+    # TODO (nathanin) factor this into a function
+    ncells = len(coords)
+    background_ids = np.random.choice(ncells, min(ncells,2500), replace=False)
+    background_imgs = []
+    for i in background_ids:
+      x = coords[i][1]
+      y = coords[i][0]
+      bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
+      img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
+      background_imgs.append(img_raw.ravel().copy())
+
+    background_imgs = np.concatenate(background_imgs).ravel()
+    thr = threshold_otsu(background_imgs)/2
     
     i = 0
-    with tqdm(coords, total=len(coords)) as pbar:
+    with tqdm(coords, total=len(coords), disable=None) as pbar:
       pbar.set_description(f'Pulling tiles from channel {c}')
       for coord in pbar:
         y, x = coord
         # bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
+<<<<<<< HEAD
         bbox = [x, x+size, y, y+size] 
         img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
         img_raw[img_raw < low_cutoff] = 0
         img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
+=======
+        bbox = [x, x+size, y, y+size]
+        raw_img = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
+        #thr = threshold_otsu(raw_img)
+        raw_img[raw_img<thr] = 0
+        img = np.ceil(255 * (raw_img / 2**16)).astype(np.uint8)
+>>>>>>> origin
 
         if scale_factor != 1:
           # img = cv2.resize(img, dsize=(0,0), fx=scale_factor, fy=scale_factor)
