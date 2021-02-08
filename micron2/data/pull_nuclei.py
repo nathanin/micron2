@@ -121,7 +121,7 @@ def get_channel_means(h5f, group_name='intensity',
 
 
 def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img, 
-                          channel_names, scale_factor, low_cutoff=4, debug=False):
+                          channel_names, scale_factor, min_thresh=10, debug=False):
   """ Pull raw data from the images provided according to coordinate locations
   """
   h0 = pytiff.Tiff(image_paths[0])
@@ -160,7 +160,7 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
 
     # TODO allow changing background size
     ncells = coords.shape[0]
-    background_ids = np.random.choice(ncells, min(ncells,2500), replace=False)
+    background_ids = np.random.choice(ncells, min(ncells,5000), replace=False)
     background_imgs = []
     for i in background_ids:
       x = coords.X[i]
@@ -171,6 +171,9 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
 
     background_imgs = np.concatenate(background_imgs).ravel()
     thr = threshold_otsu(background_imgs)/2
+    thr = max(min_thresh, thr)
+
+    d.attrs['threshold'] = thr
     
     i = 0
     with tqdm(zip(coords.X, coords.Y), total=coords.shape[0], disable=None) as pbar:
@@ -226,7 +229,8 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
 
 
 def create_image_dataset(image_paths, h5f, size, channel_names, 
-                         scale_factor, overlap, min_area, debug=False):
+                         scale_factor, overlap, min_area, min_thresh=10, 
+                         debug=False):
 
   h0 = pytiff.Tiff(image_paths[0])
   sizeh = int(size/2)
@@ -300,7 +304,7 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
     # TODO allow changing background size
     # TODO (nathanin) factor this into a function
     ncells = len(coords)
-    background_ids = np.random.choice(ncells, min(ncells,2500), replace=False)
+    background_ids = np.random.choice(ncells, min(ncells,5000), replace=False)
     background_imgs = []
     for i in background_ids:
       x = coords[i][1]
@@ -311,6 +315,9 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
 
     background_imgs = np.concatenate(background_imgs).ravel()
     thr = threshold_otsu(background_imgs)/2
+    thr = max(min_thresh, thr)
+
+    d.attrs['threshold'] = thr
     
     i = 0
     with tqdm(coords, total=len(coords), disable=None) as pbar:
@@ -320,7 +327,6 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
         # bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
         bbox = [x, x+size, y, y+size]
         raw_img = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
-        #thr = threshold_otsu(raw_img)
         raw_img[raw_img<thr] = 0
         img = np.ceil(255 * (raw_img / 2**16)).astype(np.uint8)
 
