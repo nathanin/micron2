@@ -50,6 +50,10 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
   # Make sure all the preprocessing was done
   assert 'meta' in h5f.keys()
   assert featurekey in h5f.keys()
+  if membrane_featurekey is not None:
+    print(list(h5f.keys()))
+    print(list(h5f['meta'].keys()))
+    assert membrane_featurekey in h5f.keys()
 
   # if obsm is not None: 
   #   assert obsm in h5f.keys()
@@ -83,7 +87,7 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
   obsm_dict = dict(coordinates=coordinates)
   # ----------------------------- / Build OBSM -----------------------------------
   
-  features = np.zeros((len(cell_ids), len(channel_names)))
+  features = np.zeros((len(cell_ids), len(channel_names)), dtype=np.float32)
 
   # Check for sameness of length btw features and "cells"
   vals = h5f[f'{featurekey}/{channel_names[0]}'][:]
@@ -96,7 +100,7 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
 
 
   if membrane_featurekey is not None:
-    membrane_features = np.zeros((len(cell_ids), len(channel_names)))
+    membrane_features = np.zeros((len(cell_ids), len(channel_names)), dtype=np.float32)
     vals = h5f[f'{membrane_featurekey}/{channel_names[0]}'][:]
     if vals.shape[0] == len(cell_ids):
       for i, channel in enumerate(channel_names):

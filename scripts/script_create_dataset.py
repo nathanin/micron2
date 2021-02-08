@@ -38,8 +38,8 @@ ARGS=parser.parse_args()
 full_sample_id = f'{ARGS.sample_id}_reg{ARGS.region_num}'
 
 cells = pd.read_csv(f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}_2_centroids.csv', index_col=0, header=0)
-nuclei_img = f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}_2_nuclei.tif'
-membrane_img = f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}_2_membrane.tif'
+nuclei_img        = f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}_2_nuclei.tif'
+membrane_img      = f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}_2_membrane.tif'
 
 imagefs = sorted(glob.glob(f'{ARGS.datahome}/{full_sample_id}/images/*.tif'))
 dapi_images = [f for f in imagefs if 'DAPI' in f]
