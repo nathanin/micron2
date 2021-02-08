@@ -120,7 +120,7 @@ def get_channel_means(h5f, group_name='intensity',
 
 
 def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img, 
-                          channel_names, scale_factor, low_cutoff=4, debug=False):
+                          channel_names, scale_factor, cell_prefix='cell', low_cutoff=4, debug=False):
   """ Pull raw data from the images provided according to coordinate locations
   """
   h0 = pytiff.Tiff(image_paths[0])
@@ -152,6 +152,24 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
                            compression='gzip')
     datasets.append(d)
 
+  # Cell coordinates 
+  xy_coords = np.array(coords.loc[:, ['X', 'Y']])
+  d = h5f.create_dataset('meta/cell_coordinates', data=xy_coords)
+
+  # If a mask is provided, store individual masks for each nucleus and get 
+  # channel means constrained to the area under the nuclear mask for each cell.
+  if nuclei_img is not None:
+    masks = get_masks(nuclei_img, xy_coords, sizeh, write_size)
+    d = h5f.create_dataset('meta/nuclear_masks', data=masks)
+    # get_channel_means(h5f, group_name='cell_intensity', mask_dataset='meta/nuclear_masks', return_values=False)
+
+  if membrane_img is not None:
+    masks = get_masks(membrane_img, xy_coords, sizeh, write_size)
+    d = h5f.create_dataset('meta/membrane_masks', data=masks)
+    # get_channel_means(h5f, group_name='membrane_intensity', mask_dataset='meta/membrane_masks', return_values=False)
+
+
+  # Commence pulling cells 
   print(f'Pulling {coords.shape[0]} cells')
   for pth, d, c in zip(image_paths, datasets, channel_names):
     h = pytiff.Tiff(pth)
@@ -177,7 +195,7 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
     h5f.flush()
 
   # Use a separate dataset to store cell IDs from the table
-  cell_ids = [f'cell_{x}_{y}' for x, y in zip(coords.X, coords.Y)]
+  cell_ids = [f'{cell_prefix}_{x}_{y}' for x, y in zip(coords.X, coords.Y)]
   cell_ids = np.array(cell_ids, dtype='S')
   d = h5f.create_dataset(f'meta/Cell_IDs', data=cell_ids)
 
@@ -188,21 +206,6 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
   d.attrs['written_size'] = write_size
   d.attrs['scale_factor'] = scale_factor
 
-  # Cell coordinates 
-  xy_coords = np.array(coords.loc[:, ['X', 'Y']])
-  d = h5f.create_dataset('meta/cell_coordinates', data=xy_coords)
-
-  # If a mask is provided, store individual masks for each nucleus and get 
-  # channel means constrained to the area under the nuclear mask for each cell.
-  if nuclei_img is not None:
-    masks = get_masks(nuclei_img, xy_coords, sizeh, write_size)
-    d = h5f.create_dataset('meta/nuclear_masks', data=masks)
-    get_channel_means(h5f, group_name='cell_intensity', mask_dataset='meta/nuclear_masks', return_values=False)
-
-  if membrane_img is not None:
-    masks = get_masks(membrane_img, xy_coords, sizeh, write_size)
-    d = h5f.create_dataset('meta/membrane_masks', data=masks)
-    get_channel_means(h5f, group_name='membrane_intensity', mask_dataset='meta/membrane_masks', return_values=False)
 
 
 
