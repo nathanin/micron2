@@ -121,7 +121,7 @@ def get_channel_means(h5f, group_name='intensity',
 
 
 def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img, 
-                          channel_names, scale_factor, cell_prefix='cell', low_cutoff=4, debug=False):
+                          channel_names, scale_factor, cell_prefix='cell', min_thresh=5, debug=False):
   """ Pull raw data from the images provided according to coordinate locations
   """
   h0 = pytiff.Tiff(image_paths[0])
@@ -145,6 +145,7 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
   write_size = int(np.floor(size * scale_factor))
 
   datasets = []
+  mean_datasets = []
   for c in channel_names:
     d = h5f.create_dataset(f'cells/{c}', shape=(coords.shape[0],write_size,write_size), 
                            maxshape=(None,write_size,write_size),
@@ -189,15 +190,22 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
 
     background_imgs = np.concatenate(background_imgs).ravel()
     thr = threshold_otsu(background_imgs)/2
+    thr = max(min_thresh, thr)
     
     i = 0
+    channel_means = []
     with tqdm(zip(coords.X, coords.Y), total=coords.shape[0], disable=None) as pbar:
       pbar.set_description(f'Pulling nuclei from channel {c}')
       for x, y in pbar:
         bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
         img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
-        #thr = threshold_otsu(img_raw)
-        #img_raw[img_raw<low_cutoff] = 0
+        if nuclei_img is not None:
+          mask = h5f['meta/nuclear_masks'][i,...]
+          img_avg = np.mean(img_raw[mask])
+        else:
+          img_avg = np.mean(img_raw)
+
+        ## Adjust low values and convert to uint8...
         img_raw[img_raw<thr] = 0
         img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
 
@@ -206,7 +214,12 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
           img = cv2.resize(img, dsize=(write_size, write_size))
 
         d[i,...] = img
+        channel_means.append(img_avg)
         i += 1
+
+    mean_dataset = h5f.create_dataset(f'cell_intensity/{c}', data=np.array(channel_means, dtype=np.float32))
+    mean_dataset.attrs['mean'] = np.mean(channel_means)
+    mean_dataset.attrs['std'] = np.std(channel_means)
 
     h.close()
     h5f.flush()
@@ -229,7 +242,8 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
 
 
 def create_image_dataset(image_paths, h5f, size, channel_names, 
-                         scale_factor, overlap, min_area, low_cutoff=4, debug=False):
+                         scale_factor, overlap, tile_prefix='tile', 
+                         min_thresh=5, debug=False):
 
   h0 = pytiff.Tiff(image_paths[0])
   sizeh = int(size/2)
@@ -273,7 +287,7 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
     b1 , b2, b3, b4 = x, x+size, y, y+size
     encapsulated_indices = nuclei_coords.query("X > @b3 & X < @b4 & Y > @b1 & Y < @b2")
     if len(encapsulated_indices) > 0:
-      t_id = f'tile_{x}_{y}'
+      t_id = f'{tile_prefix}_{x}_{y}'
       tile_ids.append(t_id)
       encapsulated_cell_ids[t_id] = encapsulated_indices.index.tolist()
       use_coords.append(c)
@@ -314,25 +328,23 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
 
     background_imgs = np.concatenate(background_imgs).ravel()
     thr = threshold_otsu(background_imgs)/2
+    thr = max(min_thresh, thr)
     
     i = 0
+    channel_means = []
     with tqdm(coords, total=len(coords), disable=None) as pbar:
       pbar.set_description(f'Pulling tiles from channel {c}')
       for coord in pbar:
         y, x = coord
         # bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
-<<<<<<< HEAD
-        bbox = [x, x+size, y, y+size] 
-        img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
-        img_raw[img_raw < low_cutoff] = 0
-        img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
-=======
         bbox = [x, x+size, y, y+size]
         raw_img = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
         #thr = threshold_otsu(raw_img)
+
+        img_avg = np.mean(raw_img)
+
         raw_img[raw_img<thr] = 0
         img = np.ceil(255 * (raw_img / 2**16)).astype(np.uint8)
->>>>>>> origin
 
         if scale_factor != 1:
           # img = cv2.resize(img, dsize=(0,0), fx=scale_factor, fy=scale_factor)
@@ -341,20 +353,21 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
         d[i,...] = img
         i += 1
 
+    mean_dataset = h5f.create_dataset(f'tile_intensity/{c}', data=np.array(channel_means, dtype=np.float32))
+    mean_dataset.attrs['mean'] = np.mean(channel_means)
+    mean_dataset.attrs['std'] = np.std(channel_means)
+
     h.close()
     h5f.flush()
 
 
+  # for annotating the nuclei with centroids contained in each tile
   encapsulated_cell_ids_s = str(encapsulated_cell_ids)
   h5f['images'].attrs['tile_encapsulated_cells'] = encapsulated_cell_ids_s
 
   # Use a separate dataset to store cell IDs from the table
-  # tile_ids = [f'tile_{x}_{y}' for x, y in coords]
   tile_ids = np.array(tile_ids, dtype='S')
   d = h5f.create_dataset(f'meta/Tile_IDs', data=tile_ids)
-
-  # for annotating the nuclei with centroids contained in each tile
-  nuclei_positions = np.arange(nuclei_coords.shape[0])
 
   # Collect bounding boxes
   bboxes = np.zeros((len(coords), 4), dtype=np.int)
@@ -369,23 +382,23 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
   xy_coords = np.array(coords).astype(np.int)
   d = h5f.create_dataset('meta/tile_coordinates', data=xy_coords)
 
-  get_channel_means(h5f, group_name='tile_intensity', idkey='meta/Tile_IDs',
-                    use_masks=False,
-                    return_values=False)
+  # get_channel_means(h5f, group_name='tile_intensity', idkey='meta/Tile_IDs',
+  #                   use_masks=False,
+  #                   return_values=False)
 
   # Image size
   # d = h5f.create_dataset('meta/img_size', data=np.array(size, dtype=int))
   d = h5f['images']
   d.attrs['original_size'] = size
-  d.attrs['written_size'] = write_size
-  d.attrs['scale_factor'] = scale_factor
+  d.attrs['written_size']  = write_size
+  d.attrs['scale_factor']  = scale_factor
 
 
 
 
 def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
                 membrane_img=None, size=64, min_area=100, scale_factor=1., tile_scale_factor=1.,
-                overlap=0, tile_size=256, channel_names=None, 
+                overlap=0, tile_size=128, channel_names=None, 
                 skip_tiles=False,
                 debug=False):
   """
@@ -441,8 +454,9 @@ def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
   image_sources_dict = {ch: pth for ch, pth in zip(channel_names, image_paths)}
   h5f['meta'].attrs['image_sources'] = str(image_sources_dict)
 
+  # TODO hook in command line option to prefix cells with e.g. sample name
   create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img,
-                        channel_names, scale_factor, debug=debug)
+                        channel_names, scale_factor, cell_prefix='cell', debug=debug)
 
   if not skip_tiles:
     create_image_dataset(image_paths, h5f, tile_size, channel_names, 
