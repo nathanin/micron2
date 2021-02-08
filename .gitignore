@@ -17,3 +17,5 @@ micron2.egg-info
 
 notebook_stash/
 *.tar.gz
+
+*stardist_models/

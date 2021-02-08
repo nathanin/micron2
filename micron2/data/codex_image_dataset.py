@@ -4,6 +4,8 @@ import pandas as pd
 import h5py
 import warnings
 
+from scipy.sparse import csr_matrix
+
 # For deserializing tile / nuclei relationship dictionary
 # https://stackoverflow.com/a/48101771
 import ast
@@ -19,6 +21,7 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
                     with_images=True,  # unused
                     recover_tile_nuclei=True,
                     keep_open=False,
+                    as_sparse=True,
                     obsm=None):
   """
   Load a codex image dataset into an AnnData object
@@ -47,6 +50,10 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
   # Make sure all the preprocessing was done
   assert 'meta' in h5f.keys()
   assert featurekey in h5f.keys()
+  if membrane_featurekey is not None:
+    print(list(h5f.keys()))
+    print(list(h5f['meta'].keys()))
+    assert membrane_featurekey in h5f.keys()
 
   # if obsm is not None: 
   #   assert obsm in h5f.keys()
@@ -80,7 +87,7 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
   obsm_dict = dict(coordinates=coordinates)
   # ----------------------------- / Build OBSM -----------------------------------
   
-  features = np.zeros((len(cell_ids), len(channel_names)))
+  features = np.zeros((len(cell_ids), len(channel_names)), dtype=np.float32)
 
   # Check for sameness of length btw features and "cells"
   vals = h5f[f'{featurekey}/{channel_names[0]}'][:]
@@ -93,7 +100,7 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
 
 
   if membrane_featurekey is not None:
-    membrane_features = np.zeros((len(cell_ids), len(channel_names)))
+    membrane_features = np.zeros((len(cell_ids), len(channel_names)), dtype=np.float32)
     vals = h5f[f'{membrane_featurekey}/{channel_names[0]}'][:]
     if vals.shape[0] == len(cell_ids):
       for i, channel in enumerate(channel_names):
@@ -115,7 +122,7 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
     tile_nuclei = ast.literal_eval(h5f['images'].attrs['tile_encapsulated_cells'])
     uns_dict['tile_nuclei'] = tile_nuclei
 
-  uns_dict['image_sources'] = ast.literal_eval(h5f['meta'].attrs['image_sources'])
+  # uns_dict['image_sources'] = ast.literal_eval(h5f['meta'].attrs['image_sources'])
 
   # ----------------------------- / Build UNS -----------------------------------
 
@@ -124,7 +131,9 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
     for feature_name in feature_names:
       feature_names.append(f'{feature_name}_membrane')
 
-  adata = AnnData(features, 
+  print(f'Features are {100*(features==0).sum()/np.prod(features.shape):2.2f}% zeros')
+
+  adata = AnnData(csr_matrix(features) if as_sparse else features, 
                   obs=pd.DataFrame(index=cell_ids),
                   var=pd.DataFrame(index=channel_names),
                   obsm=obsm_dict,

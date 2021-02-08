@@ -26,26 +26,45 @@ from stardist.models import StarDist2D
 #import logging
 #logger = logging.getLogger("stardist")
 
+def get_input_output(args):
+  """ Generate input and output paths from command line args """
+  if args.input is not None:
+    input_path = args.input
+  else:
+    full_region = f'{args.sample_id}_reg{args.region_num}'
+    input_path = f'{args.data_home}/{full_region}/images/{full_region}_1_DAPI-011_1.tif'
+  assert os.path.exists(input_path), f"Input {input_path} does not exist"
+
+  if args.output is not None:
+    label_out = args.output
+  else:
+    full_region = f'{args.sample_id}_reg{args.region_num}'
+    label_out = f'{args.data_home}/{full_region}/{full_region}_2_stardist.tif' 
+
+  return input_path, label_out
+
 def main(args):
+
+  image_path, label_out = get_input_output(args)
 
   # for converting int32 to 4-channel uint8: https://stackoverflow.com/a/25298780 
   dt=np.dtype((np.int32, {'f0':(np.uint8,0),'f1':(np.uint8,1),'f2':(np.uint8,2), 'f3':(np.uint8,3)}))
 
   #
-  if not os.path.isdir(args.output):
-    os.makedirs(args.output)
+  # if not os.path.isdir(args.output):
+  #   os.makedirs(args.output)
 
   size = args.size
 
-  logger.info(f'opening file {args.input}')
+  logger.info(f'opening file {image_path}')
 
   if args.HandE:
     logger.info('using opencv')
-    img = cv2.imread(args.input, -1)[:,:,::-1] # CV2 uses BGR channel order; reverse it to RGB.
+    img = cv2.imread(image_path, -1)[:,:,::-1] # CV2 uses BGR channel order; reverse it to RGB.
 
   else:
     logger.info('using pytiff')
-    with pytiff.Tiff(args.input, 'r') as handle:
+    with pytiff.Tiff(image_path, 'r') as handle:
       page = handle.pages[args.page] 
       img = page[:]
 
@@ -106,12 +125,8 @@ def main(args):
   logger.info(f'Debugging: post normalization image stats: {img.shape} {img.min()} {img.max()} {img.dtype}')
   logger.info(f'preprocessed image shape: {img.shape} type: {img.dtype} min/max: {img.min()} {img.max()} ')
 
-  # if args.subtract_page is not None:
-  #   logger.warn('subtracting an image background is deprecated behavior.')
-
   logger.info('working....')
-  label_out = f'{args.output}/{os.path.basename(args.input)}'
-  #labels, _ = model.predict_instances(img, n_tiles=(n_y, n_x))
+
   axes = 'YXC' if args.HandE else 'YX'
   n_tiles = (4,4,1) if args.HandE else (4,4)
   labels, _ = model.predict_instances_big(img, axes=axes, block_size=2048, min_overlap=128, n_tiles=n_tiles)
@@ -129,8 +144,16 @@ def main(args):
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
-  parser.add_argument('-i', dest='input', type=str, help='A tiff image')
-  parser.add_argument('-o', dest='output', type=str, help='A directory')
+
+  parser.add_argument('--data_home', type=str, help='The root data directory for a project')
+  parser.add_argument('--sample_id', type=str, help='Name of the sample to process')
+  parser.add_argument('--region_num', type=int, help='The region number to process. If the sample was scanned with 1 region, pass 0')
+
+  parser.add_argument('-i', dest='input', type=str, default=None, 
+    help='A tiff image. Byasses the project/sample_id/region_id path building process')
+
+  parser.add_argument('-o', dest='output', type=str, default=None,
+    help='A directory. Byasses the project/sample_id/region_id path building process')
 
   parser.add_argument('--page', default=0, type=int,
                       help = '0-indexed page to use for the DAPI channel data.')

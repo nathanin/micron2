@@ -4,7 +4,7 @@ import pytiff
 import cv2
 
 
-def get_images(sources, bbox):
+def get_images(sources, bbox, low_cutoff=5):
   """ Get intensity images from the sources 
 
   Args:
@@ -18,8 +18,11 @@ def get_images(sources, bbox):
   images = []
   for s in sources:
     with pytiff.Tiff(s, "r") as f:
-      img = f.pages[0][bbox[0]:bbox[1], bbox[2]:bbox[3]]
-      img = (255 * (img / 2**16)).astype(np.uint8)
+      img_raw = f.pages[0][bbox[0]:bbox[1], bbox[2]:bbox[3]]
+      img_raw[img_raw < low_cutoff] = 0
+      print(f'{s} raw nonzero', np.sum(img_raw>0))
+      img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
+
     images.append(img)
 
   return np.dstack(images)
@@ -77,6 +80,7 @@ def blend_images(images, saturation_vals=None, colors=None,
   for c in range(nc):
     img = images[:,:,c]
     sat_val = saturation_vals[c]
+    sat_val = max(1, sat_val)
     img[img > sat_val] = sat_val
     img = img / sat_val
     
