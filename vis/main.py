@@ -43,10 +43,10 @@ from .boxplot import BokehBoxPlot
 #----------------------------------------------------------- #
 #                      Input data                            #
 #----------------------------------------------------------- #
-data_dir = '/storage/codex/preprocessed_data'
+data_dir = '/Users/ingn/projects/codex-data/'
 sample_id = '210113_Breast_Cassette11'
 region_num = 1
-default_annotation = 'annotation_subtype_cleaned'
+default_annotation = 'annotation_main_features'
 
 full_sample_id = f'{sample_id}_reg{region_num}'
 

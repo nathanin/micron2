@@ -3,6 +3,8 @@ import numpy as np
 import pytiff
 import cv2
 
+import seaborn as sns
+
 
 def get_images(sources, bbox, low_cutoff=5):
   """ Get intensity images from the sources 
@@ -49,7 +51,6 @@ def load_nuclei_mask(nuclei_path, bbox):
   return nuclei > 0
 
 
-import seaborn as sns
 def blend_images(images, saturation_vals=None, colors=None, 
                  nuclei=None, nuclei_color=None):
   """
