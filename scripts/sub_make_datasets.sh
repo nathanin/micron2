@@ -2,11 +2,19 @@
 
 # Dataseet, sample, region, hostname
 
-while read d s r h; do 
+while read d s r; do 
 # Add parsing ? like check for commented lines
 
-  echo "qsub -l h=${h} -N B_${s}_${r} ./make_datasets.sh $d $s $r"
-  qsub -l h=${h} -N B_${s}_${r} ./make_datasets.sh $d $s $r
+  jobname=B_${s}_${r}
+
+  if [[ -z `ls . | grep $jobname` ]]
+  then
+
+    echo "qsub -l h=${h} -N B_${s}_${r} ./make_datasets.sh $d $s $r"
+    qsub -N $jobname ./make_datasets.sh $d $s $r
+  else
+    echo Found job $jobname log. Skip submitting.
+  fi
 
 done < <(grep -v ^\# datasets.txt)
 
