@@ -120,8 +120,8 @@ def get_channel_means(h5f, group_name='intensity',
     return vals 
 
 
-def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img, 
-                          channel_names, scale_factor, cell_prefix='cell', min_thresh=5, debug=False):
+def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img, tissue_img,
+                          channel_names, scale_factor, cell_prefix='cell', min_thresh=15, debug=False):
   """ Pull raw data from the images provided according to coordinate locations
   """
   h0 = pytiff.Tiff(image_paths[0])
@@ -170,6 +170,12 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
     d = h5f.create_dataset('meta/membrane_masks', data=masks)
     # get_channel_means(h5f, group_name='membrane_intensity', mask_dataset='meta/membrane_masks', return_values=False)
 
+  if tissue_img is not None:
+    tissue = cv2.imread(tissue_img,-1) > 0
+    #ts = pytiff.Tiff(tissue_img)
+    #tissue = ts[:]
+    #ts.close()
+
 
   # Commence pulling cells 
   print(f'Pulling {coords.shape[0]} cells')
@@ -177,20 +183,35 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
     h = pytiff.Tiff(pth)
     page = h.pages[0][:]
 
-    # TODO allow changing background size
-    ncells = coords.shape[0]
-    background_ids = np.random.choice(ncells, min(ncells,2500), replace=False)
-    background_imgs = []
-    for i in background_ids:
-      x = coords.X[i]
-      y = coords.Y[i]
-      bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
-      img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
-      background_imgs.append(img_raw.ravel().copy())
+    # # Nuclei-focused low-level detection
+    # # TODO allow changing background size
+    # ncells = coords.shape[0]
+    # background_ids = np.random.choice(ncells, min(ncells,15000), replace=False)
+    # background_imgs = []
+    # for i in background_ids:
+    #   x = coords.X[i]
+    #   y = coords.Y[i]
+    #   bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
+    #   img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
+    #   background_imgs.append(img_raw.ravel().copy())
 
-    background_imgs = np.concatenate(background_imgs).ravel()
-    thr = threshold_otsu(background_imgs)/2
-    thr = max(min_thresh, thr)
+    # background_imgs = np.concatenate(background_imgs).ravel()
+    # thr = threshold_otsu(background_imgs)/2
+    # thr = max(min_thresh, thr)
+
+    # Use the FIJI/ImageJ 'Auto' Contrast histogram method to find a low cutoff
+    if tissue_img is not None:
+      N, bins = np.histogram(page[tissue].ravel(), 256)
+    else:
+      N, bins = np.histogram(page.ravel(), 256)
+    npix = np.cumsum(N)
+    target = np.prod(page.shape)/10
+    bin_index = np.argwhere(npix > target)[0,0]
+    thr = int(bins[bin_index+1])
+    thr = max(thr, min_thresh)
+    d.attrs['threshold'] = thr
+
+    print(f'Channel {c} subtracting constant {thr}')
     
     i = 0
     channel_means = []
@@ -199,6 +220,10 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
       for x, y in pbar:
         bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
         img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
+        thr_mask = img_raw<thr
+        img_raw[thr_mask] = 0
+        img_raw[~thr_mask] = img_raw[~thr_mask]-thr
+
         if nuclei_img is not None:
           mask = h5f['meta/nuclear_masks'][i,...]
           img_avg = np.mean(img_raw[mask])
@@ -206,7 +231,7 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
           img_avg = np.mean(img_raw)
 
         ## Adjust low values and convert to uint8...
-        img_raw[img_raw<thr] = 0
+        #img_raw[img_raw<thr] = 0
         img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
 
         if scale_factor != 1:
@@ -216,6 +241,8 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
         d[i,...] = img
         channel_means.append(img_avg)
         i += 1
+
+    print(f'Channel {c} got {(np.array(channel_means)==0).mean():3.3f}% zeros')
 
     mean_dataset = h5f.create_dataset(f'cell_intensity/{c}', data=np.array(channel_means, dtype=np.float32))
     mean_dataset.attrs['mean'] = np.mean(channel_means)
@@ -243,7 +270,8 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
 
 def create_image_dataset(image_paths, h5f, size, channel_names, 
                          scale_factor, overlap, tile_prefix='tile', 
-                         min_thresh=5, debug=False):
+                         tissue_img=None,
+                         min_thresh=15, debug=False):
 
   h0 = pytiff.Tiff(image_paths[0])
   sizeh = int(size/2)
@@ -294,6 +322,12 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
   coords = use_coords
   print(f'Finished filtering with {len(coords)} remaining images')
 
+  if tissue_img is not None:
+    tissue = cv2.imread(tissue_img, -1) > 0
+    #ts = pytiff.Tiff(tissue_img)
+    #tissue = ts[:]
+    #ts.close()
+
   if debug:
     coords = coords[:50]
 
@@ -314,21 +348,37 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
     h = pytiff.Tiff(pth)
     page = h.pages[0][:]
 
-    # TODO allow changing background size
-    # TODO (nathanin) factor this into a function
-    ncells = len(coords)
-    background_ids = np.random.choice(ncells, min(ncells,2500), replace=False)
-    background_imgs = []
-    for i in background_ids:
-      x = coords[i][1]
-      y = coords[i][0]
-      bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
-      img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
-      background_imgs.append(img_raw.ravel().copy())
+    # # TODO allow changing background size
+    # # TODO (nathanin) factor this into a function
+    # ncells = len(coords)
+    # background_ids = np.random.choice(ncells, min(ncells,15000), replace=False)
+    # background_imgs = []
+    # for i in background_ids:
+    #   x = coords[i][1]
+    #   y = coords[i][0]
+    #   bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
+    #   img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
+    #   background_imgs.append(img_raw.ravel().copy())
 
-    background_imgs = np.concatenate(background_imgs).ravel()
-    thr = threshold_otsu(background_imgs)/2
+    # background_imgs = np.concatenate(background_imgs).ravel()
+    # thr = threshold_otsu(background_imgs)/2
+    # thr = max(min_thresh, thr)
+    # d.attrs['threshold'] = thr
+
+    # Use the FIJI/ImageJ 'Auto' Contrast histogram method to find a low cutoff
+    if tissue_img is not None:
+      N, bins = np.histogram(page[tissue].ravel(), 256)
+    else:
+      N, bins = np.histogram(page.ravel(), 256)
+
+    npix = np.cumsum(N)
+    target = np.prod(page.shape)/10
+    bin_index = np.argwhere(npix > target)[0,0]
+    thr = int(bins[bin_index+1])
     thr = max(min_thresh, thr)
+    d.attrs['threshold'] = thr
+
+    print(f'Channel {c} subtracting constant {thr}')
     
     i = 0
     channel_means = []
@@ -339,11 +389,14 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
         # bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
         bbox = [x, x+size, y, y+size]
         raw_img = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
+        thr_mask = raw_img < thr
+        raw_img[thr_mask] = 0
+        raw_img[~thr_mask] = raw_img[~thr_mask] - thr
         #thr = threshold_otsu(raw_img)
 
         img_avg = np.mean(raw_img)
 
-        raw_img[raw_img<thr] = 0
+        # raw_img[raw_img<thr] = 0
         img = np.ceil(255 * (raw_img / 2**16)).astype(np.uint8)
 
         if scale_factor != 1:
@@ -397,7 +450,7 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
 
 
 def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
-                membrane_img=None, size=64, min_area=100, scale_factor=1., tile_scale_factor=1.,
+                membrane_img=None, tissue_img=None, size=64, min_area=100, scale_factor=1., tile_scale_factor=1.,
                 overlap=0, tile_size=128, channel_names=None, 
                 skip_tiles=False,
                 debug=False):
@@ -455,12 +508,12 @@ def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
   h5f['meta'].attrs['image_sources'] = str(image_sources_dict)
 
   # TODO hook in command line option to prefix cells with e.g. sample name
-  create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img,
+  create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img, tissue_img,
                         channel_names, scale_factor, cell_prefix='cell', debug=debug)
 
   if not skip_tiles:
-    create_image_dataset(image_paths, h5f, tile_size, channel_names, 
-                        tile_scale_factor, overlap, min_area, debug=debug)
+    create_image_dataset(image_paths, h5f, tile_size, channel_names,
+                        tile_scale_factor, overlap, min_area, tissue_img=tissue_img, debug=debug)
 
   h5f.close()
 
