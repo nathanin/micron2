@@ -50,7 +50,7 @@ from .boxplot import BokehBoxPlot
 # instead of having a default hard-coded.
 # The problem is setting up all the widgets requires data
 # that i pull in from the active file.
-data_dir = '/Users/ingn/projects/codex-data/'
+data_dir = '/Users/ingn/tmp'
 full_sample_id = f'210113_Breast_Cassette11_reg1'
 default_annotation = 'annotation_main_features'
 
@@ -139,7 +139,7 @@ width = 400
 height = 400
 p = figure(plot_height=height, plot_width=width, title="", toolbar_location='left', 
            x_range=Range1d(), y_range=Range1d(),
-           tools='pan,wheel_zoom,reset,hover,box_select,lasso_select,save', 
+           tools='pan,wheel_zoom,reset,hover,box_select,tap,lasso_select,save', 
            sizing_mode="scale_both",
            match_aspect=True,
            tooltips=TOOLTIPS, 
@@ -157,7 +157,7 @@ pimg = figure(plot_height=height, plot_width=width, title="",
               x_range=p.x_range,
               y_range=p.y_range,
               toolbar_location='left', 
-              tools='pan,wheel_zoom,reset,save', 
+              tools='pan,wheel_zoom,reset,lasso_select,save', 
               match_aspect=True,
               output_backend='webgl')
 pimg.image_rgba(image='value', source=figure_sources['image_data'],
