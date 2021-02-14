@@ -13,6 +13,8 @@ cd /home/ingn/devel/micron2/scripts
 echo ""
 python ./script_create_dataset.py --help
 
+export OPENCV_IO_MAX_IMAGE_PIXELS=3600000000
+
 echo ""
 echo "running:"
 echo "python ./script_create_dataset.py -d $1 -s $2 -r $3"
