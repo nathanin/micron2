@@ -2,7 +2,8 @@
 #$ -V
 #$ -cwd
 #$ -j y
-#$ -l mem_free=32G
+#$ -l mem_free=128G
+#$ -l h=csclprd3-c001.local|csclprd3-c014.local|csclprd3-c016.local|csclprd3-c034.local|csclprd3-c036.local|csclprd3-c037.local|csclprd3-c038.local|csclprd3-c039.local|csclprd3-c040.local|csclprd3-c041.local|csclprd3-c042.local|csclprd3-c043.local|csclprd3-c044.local|csclprd3-c045.local|csclprd3-c046.local|csclprd3-c047.local|csclprd3-c048.local|csclprd3-c049.local|csclprd3-c050.local|csclprd3-c051.local|csclprd3-c052.local|csclprd3-c053.local
 
 siffile=/home/ingn/sifs/micron-interactive.sif
 
@@ -26,4 +27,3 @@ module load singularity/3.6.0
 
 echo "Starting singularity"
 singularity exec -B /common/ingn:/common $siffile bash ./set_up_micron_create_dataset.sh $@
-
