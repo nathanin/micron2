@@ -220,8 +220,6 @@ TOOLTIPS=[
     ("Mean cluster", "@annotation"),
     # ("Morph cluster", "@z_leiden"),
 ]
-dx = np.abs(data.coordinates_1.max() - data.coordinates_1.min())
-dy = np.abs(data.coordinates_2.max() - data.coordinates_2.min())
 width = 400
 # height = int(width * (dy/dx))
 height = 400
