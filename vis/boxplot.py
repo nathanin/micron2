@@ -54,6 +54,7 @@ class BokehBoxPlot:
   def update_data(self, new_data):
     new_data = new_data.loc[:, self.varnames]
     self.data = new_data
+    self.update_boxplot()
 
   def update_boxplot(self):
     # find the quartiles and IQR for each category

@@ -1,6 +1,6 @@
 # Micron<sup>2</sup> :microscope:
 
-![data](vis/micron2_viewer_preview.png)
+![data](vis/assets/viewer_preview.png)
 
 *****  
 

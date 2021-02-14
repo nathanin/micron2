@@ -26,7 +26,7 @@ parser.add_argument('-r', '--region_num', type=int, required=True)
 #parser.add_argument('-o', '--out_dir', type=str, required=True)
 
 parser.add_argument('--size', default=64, type=int)
-parser.add_argument('--min_area', default=50, type=int)
+parser.add_argument('--min_area', default=100, type=int)
 parser.add_argument('--tile_size', default=128, type=int)
 parser.add_argument('--overlap', default=0.2, type=float)
 parser.add_argument('--tile_scale_factor', default=1., type=float)
@@ -40,6 +40,7 @@ full_sample_id = f'{ARGS.sample_id}_reg{ARGS.region_num}'
 cells = pd.read_csv(f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}_2_centroids.csv', index_col=0, header=0)
 nuclei_img        = f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}_2_nuclei.tif'
 membrane_img      = f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}_2_membrane.tif'
+tissue_img      = f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}_1_tissue.tif'
 
 imagefs = sorted(glob.glob(f'{ARGS.datahome}/{full_sample_id}/images/*.tif'))
 dapi_images = [f for f in imagefs if 'DAPI' in f]
@@ -63,6 +64,7 @@ pull_nuclei(cells,
             out_file=out_file, 
             nuclei_img=nuclei_img,
             membrane_img=membrane_img,
+            tissue_img=tissue_img,
             size=ARGS.size,
             min_area=ARGS.min_area, 
             tile_size=ARGS.tile_size,
