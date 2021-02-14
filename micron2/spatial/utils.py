@@ -42,7 +42,7 @@ def get_neighbors_sklearn(features, k):
   model = NearestNeighbors(n_neighbors=k)
   model.fit(features)
   distances, indices = model.kneighbors(features)
-  return distances, indices
+  return pd.DataFrame(distances), pd.DataFrame(indices)
   
 
 def get_neighbors(features, k=5, return_distances=False):

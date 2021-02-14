@@ -50,7 +50,7 @@ from .boxplot import BokehBoxPlot
 # instead of having a default hard-coded.
 # The problem is setting up all the widgets requires data
 # that i pull in from the active file.
-data_dir = '/storage/codex/preprocessed_data'
+data_dir = '/Users/ingn/projects/codex-data/'
 full_sample_id = f'210113_Breast_Cassette11_reg1'
 default_annotation = 'annotation_main_features'
 
