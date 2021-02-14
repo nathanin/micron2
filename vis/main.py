@@ -45,6 +45,7 @@ from .boxplot import BokehBoxPlot
 #----------------------------------------------------------- #
 #                      Input data                            #
 #----------------------------------------------------------- #
+
 # I need here a dummy file, or to load from a config file, 
 # instead of having a default hard-coded.
 # The problem is setting up all the widgets requires data

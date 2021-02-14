@@ -1,0 +1,5 @@
+conda create -n micron2 python=3.8
+conda activate micron2
+conda install -y -c conda-forge h5py pytiff ipython jupyter numpy seaborn bokeh scikit-image scikit-learn
+pip install tensorflow tensorflow-io anndata scanpy opencv-python leidenalg
+pip install -e .

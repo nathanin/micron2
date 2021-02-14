@@ -3,6 +3,8 @@ import numpy as np
 import pytiff
 import cv2
 
+import seaborn as sns
+
 
 def estimate_channel_background(source):
   """ Estimate the the low end of expression that should be suppressed """
@@ -68,7 +70,6 @@ def load_nuclei_mask(nuclei_path, bbox):
   return nuclei > 0
 
 
-import seaborn as sns
 def blend_images(images, saturation_vals=None, colors=None, 
                  nuclei=None, nuclei_color=None):
   """
