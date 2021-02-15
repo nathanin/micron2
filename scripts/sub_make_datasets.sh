@@ -9,8 +9,7 @@ while read d s r; do
 
   if [[ -z `ls . | grep $jobname` ]]
   then
-
-    echo "qsub -l h=${h} -N B_${s}_${r} ./make_datasets.sh $d $s $r"
+    echo "qsub -N $jobname ./make_datasets.sh $d $s $r"
     qsub -N $jobname ./make_datasets.sh $d $s $r
   else
     echo Found job $jobname log. Skip submitting.
