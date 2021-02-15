@@ -8,17 +8,42 @@ from scipy.sparse import issparse
 
 try:
   import cudf
-  import cugraph
   from cuml.neighbors import NearestNeighbors
-  import cupy as cp
+  USE_RAPIDS=True
 except:
-  warnings.warn("Failed to load RAPIDS cuda-enabled tools.")
+  warnings.warn("Failed to load RAPIDS cuda-enabled tools. Falling back to sklearn")
+  from sklearn.neighbors import NearestNeighbors
+  USE_RAPIDS=False
 
 __all__ = [
   'get_neighbors',
   'pull_neighbors',
   'categorical_neighbors'
 ]
+
+def get_neighbors_rapids(features, k):
+  X_cudf = cudf.DataFrame(features)
+  # the reference points are included, so add 1 to k
+  model = NearestNeighbors(n_neighbors=k+1, output_type='cudf')
+  model.fit(features)
+
+  # kn_graph = model.kneighbors_graph(X_cudf)
+  distances, indices = model.kneighbors(X_cudf)
+  distances = distances.iloc[:, 1:] # Drop the self entry
+  indices = indices.iloc[:, 1:]
+
+  distances = distances.to_pandas()
+  indices = indices.to_pandas()
+  return distances, indices
+
+
+def get_neighbors_sklearn(features, k):
+  # sklearn doesn't include the reference point in the output
+  model = NearestNeighbors(n_neighbors=k)
+  model.fit(features)
+  distances, indices = model.kneighbors(features)
+  return pd.DataFrame(distances), pd.DataFrame(indices)
+  
 
 def get_neighbors(features, k=5, return_distances=False):
   """
@@ -35,19 +60,11 @@ def get_neighbors(features, k=5, return_distances=False):
   if issparse(features):
     features = features.toarray()
   
-  X_cudf = cudf.DataFrame(features)
-  # the reference points are included, so add 1 to k
-  model = NearestNeighbors(n_neighbors=k+1, output_type='cudf')
-  model.fit(features)
+  if USE_RAPIDS:
+    distance, indices = get_neighbors_rapids(features, k)
+  else:
+    distance, indices = get_neighbors_sklearn(features, k)
 
-  # kn_graph = model.kneighbors_graph(X_cudf)
-  distances, indices = model.kneighbors(X_cudf)
-  distances = distances.iloc[:, 1:] # Drop the self entry
-  indices = indices.iloc[:, 1:]
-
-  distances = distances.to_pandas()
-  indices = indices.to_pandas()
-  
   if return_distances:
     return indices, distances
   else:
