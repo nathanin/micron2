@@ -158,6 +158,11 @@ def hdf5_concat(h5fs, h5out, use_datasets='all', dry_run=False):
   Meta objects that need to be treated specially:
     - cell_coordinates
     - tile_coordinates
+  
+  This takes a while, so we could do some kind of checkpointing by hashing
+  hashes of the input files, and storing a success token along with each merged dataset.
+  That way, one could check hashes of a set of input files with the token value
+  and verify that the written file contains the expected data.
 
   Args:
     h5fs (list of str): Paths to hdf5 datasets to join
@@ -203,6 +208,8 @@ def hdf5_concat(h5fs, h5out, use_datasets='all', dry_run=False):
     _merge_image_datasets(h5fout, h5fs, 'meta', 'membrane_masks', cell_size)
     _merge_value_datasets(h5fout, h5fs, 'meta/Cell_IDs', stats=False)
     _merge_value_datasets(h5fout, h5fs, 'meta/Tile_IDs', stats=False)
+
+    # Need to merge coordinates as well. add a _merge_nd_datasets() function to handle NxM data
     h5fout.flush()
 
     d = h5fout.create_dataset('meta/channel_names', data = np.array(channels, dtype='S'))

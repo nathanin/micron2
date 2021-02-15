@@ -18,9 +18,21 @@ from tensorflow.keras.layers.experimental.preprocessing import (
   RandomContrast
 )
 
+def _get_encoder(encoder_type, input_shape):
+  app_args = dict(include_top=False, weights=None,
+                  input_shape=input_shape,
+                  pooling='average')
+  if encoder_type == 'ResNet50V2':
+    return tf.keras.applications.ResNet50V2
+  elif encoder_type == 'EfficientNetB1':
+    return tf.keras.applications.EfficientNetB1
+  else:
+    # Default
+    return tf.keras.applications.ResNet50V2
+
 
 class Encoder(tf.keras.Model):
-  def __init__(self, input_shape=[64, 64, 3], z_dim=128, g_network=True):
+  def __init__(self, input_shape=[64, 64, 3], z_dim=128, g_network=True, encoder_type='ResNet50V2'):
     """ Encode an image into a reduced 1D representation """
     super(Encoder, self).__init__()
     self.n_channels = input_shape[-1]
@@ -38,9 +50,10 @@ class Encoder(tf.keras.Model):
     self.crop = RandomCrop(self.x_size, self.x_size)
 
 
-    self.conv_1 = tf.keras.applications.ResNet50V2(include_top=False, weights=None,
-                             input_shape=input_shape,
-                             pooling='average')
+    # self.conv_1 = tf.keras.applications.ResNet50V2( include_top=False, weights=None,
+    #                          input_shape=input_shape,
+    #                          pooling='average')
+    self.conv_1 = _get_encoder(encoder_type, input_shape)
 
     self.conv_2 = Conv2D(filters=512, kernel_size=(2,2), strides=(1,1), 
                padding='same', activation='relu')
