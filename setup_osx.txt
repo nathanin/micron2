@@ -1,3 +1,7 @@
+# Apple silicon see https://github.com/apple/tensorflow_macos/issues/153 to install tensorflow
+
+git clone https://github.com/nathanin/micron2
+cd micron2
 conda create -n micron2 python=3.8
 conda activate micron2
 conda install -y -c conda-forge h5py pytiff ipython jupyter numpy seaborn bokeh scikit-image scikit-learn
