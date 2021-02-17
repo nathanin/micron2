@@ -106,44 +106,48 @@ def train_moco(dataset, model, kmodel, max_queue_len=32, crop_size=48,
   print('Start training')
   recent_loss, loss_history = [], []
   prev_recent, prev_overall = 0, 0
-  for i, batch in pbar:
-    with tf.GradientTape() as tape:
-      if perturb:
-        batch = perturb_fn(batch, crop_size=crop_size)
+  try:
+    for i, batch in pbar:
+      with tf.GradientTape() as tape:
+        if perturb:
+          batch = perturb_fn(batch, crop_size=crop_size)
 
-      q_feat = model.encode_g(batch) # The 'active' batch
+        q_feat = model.encode_g(batch) # The 'active' batch
 
-      with tape.stop_recording():
-        key_feat = kmodel.encode_g(batch) # A 'key' batch
-      
-      batch_size = q_feat.shape[0]
-      l = moco_loss(q_feat, key_feat, queue.getqueue(), batch_size=batch_size, temp=temp)
+        with tape.stop_recording():
+          key_feat = kmodel.encode_g(batch) # A 'key' batch
+        
+        batch_size = q_feat.shape[0]
+        l = moco_loss(q_feat, key_feat, queue.getqueue(), batch_size=batch_size, temp=temp)
 
-    grads = tape.gradient(l, model.trainable_variables)
-    optim.apply_gradients(zip(grads, model.trainable_variables))
+      grads = tape.gradient(l, model.trainable_variables)
+      optim.apply_gradients(zip(grads, model.trainable_variables))
 
-    update_key_model(model, kmodel, momentum=momentum)
+      update_key_model(model, kmodel, momentum=momentum)
 
-    lnpy = l.numpy()
-    recent_loss.append(lnpy)
-    loss_history.append(lnpy)
+      lnpy = l.numpy()
+      recent_loss.append(lnpy)
+      loss_history.append(lnpy)
 
-    if i % 10 == 0:
-      mn_recent = np.mean(recent_loss)
-      mn_overall = np.mean(loss_history)
-      d_recent = prev_recent - mn_recent
-      d_overall = prev_overall - mn_overall
-      pstr = f'loss s={mn_recent:3.1e}' +\
-             f' ds={d_recent:3.1e}' +\
-             f' l={mn_overall:3.1e}' +\
-             f' dl={d_overall:3.1e}' 
-      pbar.set_description(pstr)
-      prev_recent = mn_recent
-      prev_overall = mn_overall
-      recent_loss = []
+      if i % 10 == 0:
+        mn_recent = np.mean(recent_loss)
+        mn_overall = np.mean(loss_history)
+        d_recent = prev_recent - mn_recent
+        d_overall = prev_overall - mn_overall
+        pstr = f'loss s={mn_recent:3.1e}' +\
+              f' ds={d_recent:3.1e}' +\
+              f' l={mn_overall:3.1e}' +\
+              f' dl={d_overall:3.1e}' 
+        pbar.set_description(pstr)
+        prev_recent = mn_recent
+        prev_overall = mn_overall
+        recent_loss = []
 
-    queue.enqueue(key_feat)
-    if i >= max_steps:
-      break
+      # Stash this batch in the training queue
+      queue.enqueue(key_feat)
+      if i >= max_steps:
+        break
+  except KeyboardInterrupt:
+    print('Caught keyboard interrupt. Ending early.')
 
   return loss_history

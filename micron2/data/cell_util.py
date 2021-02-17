@@ -4,6 +4,8 @@ import pandas as pd
 import tqdm.auto as tqdm
 import h5py
 
+""" Utilities for processing cell images/features """
+
 kernel = np.ones((3,3))
 # def staining_border_nonzero(h5f, channel, i, kernel=kernel):
   # x = h5f['cells'][channel][i,...]

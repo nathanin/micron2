@@ -3,6 +3,11 @@ import pandas as pd
 import h5py
 import os
 
+
+""" Data/dataset structures and methods for working with them 
+
+"""
+
 def hdf5_info(h5f, show_datasets=None, show_names=True):
   """ Print information about a dataset
 
@@ -78,7 +83,7 @@ def _check_concat_inputs(h5fs):
     assert image_size == image_size2, f'Dataset {f} cell image size mismatch ({image_size} vs {image_size2})'
 
 
-def _merge_image_datasets(h5fout, h5fs, dataset, channel, size):
+def _merge_image_datasets(h5fout, h5fs, dataset, channel, size, perm=None):
   """ Merge all image datasets of the same name
 
   Args:
@@ -105,20 +110,42 @@ def _merge_image_datasets(h5fout, h5fs, dataset, channel, size):
   
   print(f'Merging {dataset}/{channel} with {total_size} total elements from {len(h5fs)} files')
 
-  d = h5fout.create_dataset(f'{dataset}/{channel}', shape=(total_size,size,size), 
-                            maxshape=(None,size,size),
-                            chunks=(1,size,size), 
-                            dtype='uint8', # TODO inherit dtype from the sources
-                            compression='gzip')
-  i=0
+  data = []
   for h5f in h5fs:
-    with h5py.File(h5f,'r') as f:
-      n=f[f'{dataset}/{channel}'].shape[0]
-      d[i:i+n,...]=f[f'{dataset}/{channel}'][:]
-    i=n
+    print(f'\tsource: {h5f}')
+    with h5py.File(h5f, 'r') as f:
+      data.append(f[f'{dataset}/{channel}'][:])
+  data = np.concatenate(data, axis=0)
+  print(f'{data.shape}')
+
+  if perm is not None:
+    data = data[perm]
+
+  d = h5fout.create_dataset(f'{dataset}/{channel}', data=data, compression='gzip', chunks=(1,size,size))
+  d.attrs['max'] = np.max(data)
+  d.attrs['mean'] = np.mean(data)
+  d.attrs['std'] = np.std(data)
+
+  del data
+
+  # d = h5fout.create_dataset(f'{dataset}/{channel}', shape=(total_size,size,size), 
+  #                           maxshape=(None,size,size),
+  #                           chunks=(1,size,size), 
+  #                           dtype='uint8', # TODO inherit dtype from the sources
+  #                           compression='gzip')
+  # i=0
+  # for h5f in h5fs:
+  #   print(f'\tsource: {h5f}')
+  #   with h5py.File(h5f,'r') as f:
+  #     n=f[f'{dataset}/{channel}'].shape[0]
+  #     d[i:i+n,...]=f[f'{dataset}/{channel}'][:]
+  #   i=n
+  # if perm is not None:
+  #   d[:] = d[perm,...]
 
 
-def _merge_value_datasets(h5fout, h5fs, dataset, stats):
+
+def _merge_value_datasets(h5fout, h5fs, dataset, stats, perm=None):
   """ Merge scalar value datasets """
   values = []
   for h5f in h5fs:
@@ -126,23 +153,105 @@ def _merge_value_datasets(h5fout, h5fs, dataset, stats):
       values.append(f[dataset][:])
   values = np.concatenate(values)
   print(f'Merging scalar dataset: {dataset} new shape {values.shape}')
+
+  if perm is not None:
+    values = values[perm]
+
   d = h5fout.create_dataset(dataset, data=values)
+
   if stats:
     d.attrs['mean'] = np.mean(values)
     d.attrs['std'] = np.std(values)
+    d.attrs['max'] = np.max(values)
 
 
-def _make_source_dataset(h5fout, h5fs, samples, size_ref_dataset):
-  """ Make a string dataset that lists the source sample for each slide """
+
+def _merge_coordinates(h5fout, h5fs, dataset, perm=None):
+  coords = []
+  for h5f in h5fs:
+    with h5py.File(h5f, 'r') as f:
+      coords.append(f[dataset][:])
+  coords = np.concatenate(coords, axis=0)
+
+  if perm is not None:
+    coords = coords[perm,...]
+
+  d = h5fout.create_dataset(dataset, data=coords)
+
+
+def _make_source_dataset(h5fout, h5fs, samples, size_ref_dataset, ds_name, seed=999):
+  """ Make a string dataset that lists the source sample for each cell/image """
   values = []
   for h5f, name in zip(h5fs, samples):
     with h5py.File(h5f,'r') as f:
       size = f[size_ref_dataset].shape[0]
     values += [name]*size
-  d = h5fout.create_dataset('meta/samples', data=np.array(values, dtype='S'))
+
+  np.random.seed(seed)
+  perm = np.random.choice(len(values), len(values), replace=False)
+  values = np.array(values, dtype='S')
+  values = values[perm]
+  _ = h5fout.create_dataset(f'meta/{ds_name}', data=values)
+  _ = h5fout.create_dataset(f'meta/{ds_name}_perm', data=perm)
 
 
-def hdf5_concat(h5fs, h5out, use_datasets='all', dry_run=False):
+
+def shift_coordinates(labels, coords, sample_layout):
+  # do some gymnastics with the raw coordinates
+  # we want to set the origin for each slide to (0,0)
+  coords_out = coords.copy()
+  u_labels = np.unique(labels)
+  for l in u_labels:
+    lidx = labels==l
+    l_coords = coords_out[lidx,...]
+    l_coords[:,0] = l_coords[:,0] - min(l_coords[:,0])
+    l_coords[:,1] = l_coords[:,1] - min(l_coords[:,1])
+    #l_coords[:,1] = -l_coords[:,1]
+    coords_out[lidx,...] = l_coords
+  
+  nr,nc = sample_layout.shape
+  print('creating coordinate layout:', nr,nc)
+  
+  for r2 in range(nr):
+    if r2>0:
+      row_shift = current_row_max # type: ignore
+    else: 
+      row_shift = 0
+    
+    current_row_max = 0
+    for c2 in range(nc):
+      if r2==0 and c2==0: continue
+      
+      target_slide = sample_layout[r2,c2]
+      if target_slide == 'pass':
+        continue
+      if target_slide is None:
+        continue
+      
+      ref_col = c2-1 if c2>0 else c2
+      col_ref_slide = sample_layout[r2,ref_col] 
+      
+      target_idx = labels==target_slide
+      target_coords = coords_out[target_idx].copy()
+          
+      target_coords[:,1] += row_shift
+      if max(target_coords[:,1]) > current_row_max:
+        current_row_max = max(target_coords[:,1])
+      
+      if col_ref_slide != target_slide:
+        col_ref = coords_out[labels==col_ref_slide]
+        col_max = max(col_ref[:,0])
+        target_coords[:,0] += col_max
+      
+      coords_out[target_idx] = target_coords
+          
+  # Flip dim1 (vertical dimension)
+  coords_out[:,1] = -coords_out[:,1]
+  return coords_out
+
+
+
+def hdf5_concat(h5fs, h5out, channels='all', sample_layout=None, dry_run=False):
   """ Concatenate several datasets
 
   Requires that the datasets all have the same number of channels
@@ -164,11 +273,17 @@ def hdf5_concat(h5fs, h5out, use_datasets='all', dry_run=False):
   That way, one could check hashes of a set of input files with the token value
   and verify that the written file contains the expected data.
 
+  The way with shuffling all data upfront is also very memory heavy. There can probably 
+  be a refactor somewhere that lets us shuffle across all samples without having
+  a whole stack of images in memory.
+  
+
   Args:
     h5fs (list of str): Paths to hdf5 datasets to join
     h5out (str): Path where the joined hdf5 dataset will be created
-    use_datasets (str, list): if 'all', use all datasets, otherwise use 
+    channels (str, list): if 'all', use all datasets, otherwise use 
       only sets from a provided list (TODO)
+    sample_layout (np.ndarray, strings): 2D layout of samples after shifting coordinates
     dry_run (bool): if True, print info but do not execute file creation (TODO)
   
   Returns:
@@ -177,39 +292,59 @@ def hdf5_concat(h5fs, h5out, use_datasets='all', dry_run=False):
   assert isinstance(h5fs, list)
   assert len(h5fs)>1
 
-  channels = _get_hdf5_keys(h5fs[0], 'cells')
+  if channels is None:
+    channels = _get_hdf5_keys(h5fs[0], 'cells')
+  else:
+    assert isinstance(channels, list)
+
   fx = lambda x: os.path.splitext(os.path.basename(x))[0]
   samples = [fx(x) for x in h5fs]
   print('Merging: ', samples)
 
   with h5py.File(h5out, 'w') as h5fout:
-    _make_source_dataset(h5fout, h5fs, samples, f'cells/{channels[0]}')
-    h5fout.flush()
+    _make_source_dataset(h5fout, h5fs, samples, f'cells/{channels[0]}', 'cell_samples')
+    _make_source_dataset(h5fout, h5fs, samples, f'images/{channels[0]}', 'image_samples')
 
     cell_size = _get_size_attr(h5fs[0], 'cells')
+    cell_perm = h5fout['meta/cell_samples_perm'][:]
     for ch in channels:
-      _merge_image_datasets(h5fout, h5fs, 'cells', ch, cell_size)
+      _merge_image_datasets(h5fout, h5fs, 'cells', ch, cell_size, perm=cell_perm)
       h5fout.flush()
 
     image_size = _get_size_attr(h5fs[0], 'images')
+    image_perm = h5fout['meta/image_samples_perm'][:]
     for ch in channels:
-      _merge_image_datasets(h5fout, h5fs, 'images', ch, image_size)
+      _merge_image_datasets(h5fout, h5fs, 'images', ch, image_size, perm=image_perm)
       h5fout.flush()
  
     for ch in channels:
-      _merge_value_datasets(h5fout, h5fs, f'cell_intensity/{ch}', stats=True)
+      _merge_value_datasets(h5fout, h5fs, f'cell_intensity/{ch}', stats=True, perm=cell_perm)
       h5fout.flush()
 
-    for ch in channels:
-      _merge_value_datasets(h5fout, h5fs, f'tile_intensity/{ch}', stats=True)
-      h5fout.flush()
+    # TODO what? these are missing? 
+    # for ch in channels:
+    #   _merge_value_datasets(h5fout, h5fs, f'tile_intensity/{ch}', stats=True, perm=image_perm)
 
-    _merge_image_datasets(h5fout, h5fs, 'meta', 'nuclear_masks', cell_size)
-    _merge_image_datasets(h5fout, h5fs, 'meta', 'membrane_masks', cell_size)
-    _merge_value_datasets(h5fout, h5fs, 'meta/Cell_IDs', stats=False)
-    _merge_value_datasets(h5fout, h5fs, 'meta/Tile_IDs', stats=False)
-
-    # Need to merge coordinates as well. add a _merge_nd_datasets() function to handle NxM data
+    _merge_image_datasets(h5fout, h5fs, 'meta', 'nuclear_masks', cell_size, perm=cell_perm)
+    _merge_image_datasets(h5fout, h5fs, 'meta', 'membrane_masks', cell_size, perm=cell_perm)
+    _merge_value_datasets(h5fout, h5fs, 'meta/Cell_IDs', stats=False, perm=cell_perm)
+    _merge_value_datasets(h5fout, h5fs, 'meta/Tile_IDs', stats=False, perm=image_perm)
     h5fout.flush()
 
-    d = h5fout.create_dataset('meta/channel_names', data = np.array(channels, dtype='S'))
+    _merge_coordinates(h5fout, h5fs, 'meta/cell_coordinates', perm=cell_perm)
+    _merge_coordinates(h5fout, h5fs, 'meta/tile_coordinates', perm=image_perm)
+
+    _ = h5fout.create_dataset('meta/channel_names', data = np.array(channels, dtype='S'))
+
+    # Apply coordinate shifting for convenient plotting later
+    cell_labels = np.array([x.decode('utf-8') for x in h5fout['meta/cell_samples'][:]])
+    cell_coords = h5fout['meta/cell_coordinates'][:]
+    cell_shifted_coords = shift_coordinates(cell_labels, cell_coords, sample_layout)
+    _ = h5fout.create_dataset('meta/cell_coordinates_shift', data=cell_shifted_coords)
+
+    image_labels = np.array([x.decode('utf-8') for x in h5fout['meta/image_samples'][:]])
+    image_coords = h5fout['meta/tile_coordinates'][:]
+    image_shifted_coords = shift_coordinates(image_labels, image_coords, sample_layout)
+    _ = h5fout.create_dataset('meta/tile_coordinates_shift', data=image_shifted_coords)
+
+    h5fout.flush()

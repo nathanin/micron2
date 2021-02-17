@@ -15,7 +15,8 @@ from tensorflow.keras.layers.experimental.preprocessing import (
   RandomRotation,
   RandomTranslation,
   RandomCrop,
-  RandomContrast
+  RandomContrast,
+  # Rescaling
 )
 
 def _get_encoder(encoder_type, input_shape):
@@ -23,16 +24,17 @@ def _get_encoder(encoder_type, input_shape):
                   input_shape=input_shape,
                   pooling='average')
   if encoder_type == 'ResNet50V2':
-    return tf.keras.applications.ResNet50V2
+    return tf.keras.applications.ResNet50V2(**app_args)
   elif encoder_type == 'EfficientNetB1':
-    return tf.keras.applications.EfficientNetB1
+    return tf.keras.applications.EfficientNetB1(**app_args)
   else:
     # Default
-    return tf.keras.applications.ResNet50V2
+    return tf.keras.applications.ResNet50V2(**app_args)
 
 
 class Encoder(tf.keras.Model):
-  def __init__(self, input_shape=[64, 64, 3], z_dim=128, g_network=True, encoder_type='ResNet50V2'):
+  def __init__(self, input_shape=[64, 64, 3], z_dim=256, g_network=True, 
+               g_dim=64, encoder_type='ResNet50V2'):
     """ Encode an image into a reduced 1D representation """
     super(Encoder, self).__init__()
     self.n_channels = input_shape[-1]
@@ -40,13 +42,13 @@ class Encoder(tf.keras.Model):
     self.z_dim = z_dim
     
     # perturb functions
-    # self.contrast = RandomContrast()
+    self.contrast = RandomContrast(factor=[0.2,0.2])
     self.flip = RandomFlip()
     self.rotate = RandomRotation(1, fill_mode='constant', fill_value=0)
-    self.translate = RandomTranslation(height_factor=(0.1, 0.1), 
-                                       width_factor=(0.1,0.1),
-                                       fill_mode='constant',
-                                       fill_value=0)
+    # self.translate = RandomTranslation(height_factor=(0.1, 0.1), 
+    #                                    width_factor=(0.1,0.1),
+    #                                    fill_mode='constant',
+    #                                    fill_value=0)
     self.crop = RandomCrop(self.x_size, self.x_size)
 
 
@@ -63,15 +65,20 @@ class Encoder(tf.keras.Model):
     self.dense_2 = Dense(self.z_dim, activation=None)
 
     self.g_network = g_network
+    self.g_dim = g_dim
     if self.g_network:
-      self.g_fn_0 = Dense(128, activation='relu')
-      self.g_fn_1 = Dense(32, activation=None)
+      self.g_fn_0 = Dense(self.g_dim*2, activation='relu')
+      self.g_fn_1 = Dense(self.g_dim, activation=None)
 
   def perturb(self, x):
+    x = self.contrast(x)
     x = self.flip(x)
     x = self.rotate(x)
-    x = self.translate(x)
+    # x = self.translate(x)
     x = self.crop(x)
+    # scalar multipy by delta ~ [0.5, 2]
+    # delta = tf.random.uniform(shape=(), minval=0.5, maxval=2.)
+    # x = x * delta
     return x
 
   def model_backbone(self, x, training=True):
