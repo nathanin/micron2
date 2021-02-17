@@ -42,9 +42,9 @@ def get_images(sources, bbox):
 
     # img_raw[img_raw < low_cutoff] = 0
     # img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
-    img = (255 * (img_raw / 2**16)).astype(np.uint8)
+    # img = (255 * (img_raw / 2**16)).astype(np.uint8)
 
-    images.append(img)
+    images.append(img_raw)
 
   return np.dstack(images)
 
@@ -87,7 +87,7 @@ def blend_images(images, saturation_vals=None, colors=None,
   """
   nc = images.shape[-1]
   if saturation_vals is None:
-    # Default to 95%
+    # Default to 99%
     saturation_vals = [np.quantile(images[:,:,c], 0.99).astype(np.uint8) for c in range(nc)]
 
   if colors is None:
@@ -100,9 +100,11 @@ def blend_images(images, saturation_vals=None, colors=None,
   for c in range(nc):
     img = images[:,:,c]
     sat_val = saturation_vals[c]
-    sat_val = max(1, sat_val)
+    sat_val = max(1, sat_val) # sometimes the 99th percentile can be 0
     img[img > sat_val] = sat_val
     img = img / sat_val
+
+    img = (255 * img).astype(np.uint8) / 255.
     
     view[:,:,0] += (img * colors[c,0]).astype(np.uint8)
     view[:,:,1] += (img * colors[c,1]).astype(np.uint8)
