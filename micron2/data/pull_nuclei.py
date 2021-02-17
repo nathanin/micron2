@@ -211,7 +211,10 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
     thr = max(thr, min_thresh)
     d.attrs['threshold'] = thr
 
-    print(f'Channel {c} subtracting constant {thr}')
+    if c=='DAPI':
+      pass
+    else:
+      print(f'Channel {c} subtracting constant {thr}')
     
     i = 0
     channel_means = []
@@ -220,9 +223,15 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
       for x, y in pbar:
         bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
         img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
-        thr_mask = img_raw<thr
-        img_raw[thr_mask] = 0
-        img_raw[~thr_mask] = img_raw[~thr_mask]-thr
+        
+        # do not alter the DAPI
+        if c=='DAPI':
+          print('Skipping DAPI channel thresholding')
+          pass
+        else:
+          thr_mask = img_raw<thr
+          img_raw[thr_mask] = 0
+          img_raw[~thr_mask] = img_raw[~thr_mask]-thr
 
         if nuclei_img is not None:
           mask = h5f['meta/nuclear_masks'][i,...]
@@ -389,10 +398,14 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
         # bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
         bbox = [x, x+size, y, y+size]
         raw_img = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
-        thr_mask = raw_img < thr
-        raw_img[thr_mask] = 0
-        raw_img[~thr_mask] = raw_img[~thr_mask] - thr
-        #thr = threshold_otsu(raw_img)
+
+        if 'DAPI' in c:
+          print('Skipping DAPI channel thresholding')
+          pass
+        else:
+          thr_mask = raw_img < thr
+          raw_img[thr_mask] = 0
+          raw_img[~thr_mask] = raw_img[~thr_mask] - thr
 
         img_avg = np.mean(raw_img)
 
