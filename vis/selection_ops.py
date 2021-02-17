@@ -37,19 +37,19 @@ def set_dropdown_menu(shared_variables, widgets):
 #   figures['intensity_hist'].title.text = f'{ac} intensity'
 
 
-def set_active_channel(event, shared_variables, widgets, figure_sources, figures):
-  ac = event.item
-  shared_variables['active_channel'] = ac
-  logger.info(f'setting active channel: {ac}')
+# def set_active_channel(event, shared_variables, widgets, figure_sources, figures):
+#   ac = event.item
+#   shared_variables['active_channel'] = ac
+#   logger.info(f'setting active channel: {ac}')
 
-  widgets['focus_channel'].label = f'Edit {ac} image'
-  widgets['color_picker'].title = f'{ac} color'
-  widgets['color_picker'].color = rgb2hex(shared_variables['channel_colors'][ac])
-  widgets['color_saturation'].title = f'{ac} saturation'
-  widgets['color_saturation'].value = shared_variables['saturation_vals'][ac]
+#   widgets['focus_channel'].label = f'Edit {ac} image'
+#   widgets['color_picker'].title = f'{ac} color'
+#   widgets['color_picker'].color = rgb2hex(shared_variables['channel_colors'][ac])
+#   widgets['color_saturation'].title = f'{ac} saturation'
+#   widgets['color_saturation'].value = shared_variables['saturation_vals'][ac]
 
-  shared_variables['use_channels'] = widgets['channels_select'].value
-  update_edit_hist(shared_variables, widgets, figure_sources, figures)
+#   shared_variables['use_channels'] = widgets['channels_select'].value
+#   update_edit_hist(shared_variables, widgets, figure_sources, figures)
 
 
 def maybe_pull(use_channels, active_raw_images, image_sources, bbox):
@@ -128,19 +128,30 @@ def update_image_plot(shared_variables, widgets, figure_sources, figures):
   colors = np.stack(colors, axis=0)
   saturation = []
   for i,c in enumerate(use_channels):
-    s = saturation_vals[c] 
-    if (s is None) or (s == 0):
+    slow, shigh = saturation_vals[c] 
+
+    # if (slow is None) or (slow == 0):
+    #   img = images[:,:,i]
+    #   if img.sum() == 0:
+    #     slow = 0
+    #   else:
+    #     slow = int(np.max(img)/256)
+
+    if (shigh is None) or (shigh == 0):
       img = images[:,:,i]
       if img.sum() == 0:
-        s = 0
+        shigh = 0
       else:
         vals = img.ravel()[img.ravel()>0]
-        s = np.quantile(vals, 0.99)
+        shigh = np.quantile(vals, 0.99)
+
+    slow = int(shigh / 256)
 
     # make sure the saturation val widget reflects the value being drawn
-    widgets[f'color_saturation_{c}'].value = s
+    widgets[f'color_saturation_{c}_low'].value = slow
+    widgets[f'color_saturation_{c}_high'].value = shigh
 
-    saturation.append(s)
+    saturation.append((slow,shigh))
 
   if widgets['focus_channel_nuclei'].active:
     nuclei = load_nuclei_mask(shared_variables['nuclei_path'], shared_variables['bbox'])
@@ -165,8 +176,8 @@ def update_image_plot(shared_variables, widgets, figure_sources, figures):
   # figures['image_plot'].y_range.end = y#Range1d(0, y)
   # figures['image_plot'].dh = y
 
-  figures['image_plot'].x_range = figures['scatter_plot'].x_range
-  figures['image_plot'].y_range = figures['scatter_plot'].y_range
+  # figures['image_plot'].x_range = figures['scatter_plot'].x_range
+  # figures['image_plot'].y_range = figures['scatter_plot'].y_range
 
   logger.info(f'update image aspect ratio: {dw} / {dh}')
   figure_sources['image_data'].data = {'value': [blended],

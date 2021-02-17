@@ -96,7 +96,7 @@ def set_active_slide(adata_path, shared_variables, annotation_col, logger):
   # all_channels = [k for k, i in ad.uns['image_sources'].items()]
   all_channels = sorted(ad.var_names.to_list())
   active_raw_images = {c: None for c in all_channels}
-  saturation_vals = {c: 0 for c in all_channels} # TODO config default saturation values
+  saturation_vals = {c: (0,0) for c in all_channels} # TODO config default saturation values
   neighbor_indices = get_neighbors(coords)
 
   image_sources = {c: get_channel_image_path(data_dir, c) for c in all_channels}

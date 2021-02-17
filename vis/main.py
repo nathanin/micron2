@@ -1,4 +1,5 @@
 from os.path import dirname, join
+from bokeh.models.tools import HoverTool, PanTool, ResetTool, WheelZoomTool, BoxSelectTool, PolySelectTool
 
 import numpy as np
 import scanpy as sc
@@ -10,8 +11,8 @@ from bokeh.io import curdoc
 from bokeh.layouts import column, row, layout, gridplot
 from bokeh.models import (ColumnDataSource, BoxSelectTool, LassoSelectTool, Button, 
                           Div, Select, Slider, TextInput, MultiChoice, MultiSelect, ColorPicker, 
-                          Dropdown, Span, CheckboxButtonGroup, Toggle, FileInput,
-                          CheckboxGroup, Spinner)
+                          Dropdown, Span, CheckboxButtonGroup, Toggle, FileInput, RangeSlider,
+                          CheckboxGroup, Spinner, Panel, Tabs, )
 from bokeh.plotting import figure
 from bokeh.models import Range1d
 
@@ -50,8 +51,8 @@ from .boxplot import BokehBoxPlot
 # instead of having a default hard-coded.
 # The problem is setting up all the widgets requires data
 # that i pull in from the active file.
-data_dir = '/Users/ingn/tmp'
-full_sample_id = f'210113_Breast_Cassette11_reg1'
+data_dir = '/storage/codex/preprocessed_data'
+full_sample_id = f'210125_Breast_Cassette5_reg1'
 default_annotation = 'annotation_main_features'
 
 shared_variables = {}
@@ -76,7 +77,8 @@ for c in shared_variables['all_channels']:
 
 CLUSTER_VIEW_OPTS = [
   'Join focused clusters',
-  'Show neighbors'
+  'Show neighbors',
+  'Hide scatter plot'
 ]
 widgets = dict(
   cluster_select = CheckboxGroup(active=[], labels=shared_variables['all_clusters'], 
@@ -95,7 +97,8 @@ widgets = dict(
   clear_channels = Button(label='Clear image channels', button_type='success'),
   update_image = Button(label='Update drawing', button_type='success'),
   # data_home = TextInput(name='Data home', placeholder='Enter full path to data home'),
-  input_file = TextInput(placeholder='Enter full path to sample h5ad')
+  input_file = TextInput(placeholder='Enter full path to sample h5ad'),
+  dot_size = Spinner(low=1, high=30, step=1, value=10, css_classes=["my-widgets"], name='Dot size', width=50)
 )
 
 ## Add selector for showing nuclei & nuclei color
@@ -107,8 +110,12 @@ for ch in shared_variables['all_channels']:
   widgets[f'focus_channel_{ch}'] = Toggle(label=ch, button_type='success', width=75)
   widgets[f'color_picker_{ch}'] = ColorPicker(width=50, color=rgb2hex(shared_variables['channel_colors'][ch]),
                                               css_classes=["my-widgets"])
-  widgets[f'color_saturation_{ch}'] = Spinner(low=0, high=255, step=1, tags=[ch], #title=f'{ch} saturation',           
-                                              width=70, value=0, css_classes=["my-widgets"])
+  widgets[f'color_saturation_{ch}_low'] = Spinner(low=0, high=255, step=5, tags=[ch], #title=f'{ch} saturation',           
+                                              width=50, value=0, css_classes=["my-widgets"])
+  widgets[f'color_saturation_{ch}_high'] = Spinner(low=0, high=255, step=5, tags=[ch], #title=f'{ch} saturation',           
+                                              width=50, value=0, css_classes=["my-widgets"])
+  # widgets[f'color_saturation_{ch}'] = RangeSlider(start=0, end=int(2**16), step=5, tags=[ch], #title=f'{ch} saturation',           
+  #                                             width=70, value=0, css_classes=["my-widgets"])
 
 
 ## -------------------------------------------------------------------
@@ -117,11 +124,11 @@ for ch in shared_variables['all_channels']:
 
 dummy_data = np.zeros((5,5), dtype=np.uint32)
 figure_sources = dict(
-  scatter_fg = ColumnDataSource(data=dict(x=[], y=[], s=[], index=[], annotation=[], color=[])),
+  scatter_fg = ColumnDataSource(data=dict(x=[], y=[], s=[], index=[], annotation=[], cluster=[], color=[])),
   image_data = ColumnDataSource({'value': [], 'dw': [], 'dh': [], 'x0': [], 'y0': []}),
   cluster_hist = ColumnDataSource({'value':  [0]*len(shared_variables['all_clusters']), 'x': shared_variables['all_clusters']}),
   neighbor_hist = ColumnDataSource({'value': [0]*len(shared_variables['all_clusters']), 'x': shared_variables['all_clusters']}),
-  intensity_hist = ColumnDataSource({'value': [], 'x': []})
+  # intensity_hist = ColumnDataSource({'value': [], 'x': []})
 )
 
 ## -------------------------------------------------------------------
@@ -130,38 +137,47 @@ figure_sources = dict(
 
 # Draw a canvas with an appropriate aspect ratio
 TOOLTIPS=[
+    ("Annotation", "@annotation"),
+    ("Cluster", "@cluster"),
     ("Index", "@index"),
-    ("Mean cluster", "@annotation"),
     ("x", "@x"),
     ("y", "@y"),
 ]
-width = 400
-height = 400
+width = 200
+height = 200
+hover_tool = HoverTool(tooltips=TOOLTIPS)
+tools = [hover_tool, PanTool(), ResetTool(), WheelZoomTool(), BoxSelectTool(), PolySelectTool()]
 p = figure(plot_height=height, plot_width=width, title="", toolbar_location='left', 
            x_range=Range1d(), y_range=Range1d(),
-           tools='pan,wheel_zoom,reset,hover,box_select,tap,lasso_select,save', 
+          #  tools='pan,wheel_zoom,reset,hover,box_select,tap,lasso_select,save', 
+           tools = tools, 
            sizing_mode="scale_both",
            match_aspect=True,
-           tooltips=TOOLTIPS, 
+          #  tooltips=TOOLTIPS, 
            output_backend='webgl')
 p.select(BoxSelectTool).select_every_mousemove = False
 p.select(LassoSelectTool).select_every_mousemove = False
 fg_scatter = p.scatter(x="x", y="y", source=figure_sources['scatter_fg'], 
                        radius='s', color="active_color", line_color=None)
-
+hover_tool.renderers = [fg_scatter]
+img_plot = p.image_rgba(image='value', source=figure_sources['image_data'],
+                x='x0',y='y0',dw='dw',dh='dh')
+img_plot.level = 'underlay'
+# tab1 = Panel(child=p, title='Scatter')
 
 ## -------------------------------------------------------------------
 #                  Create the zoom image figure
 ## -------------------------------------------------------------------
-pimg = figure(plot_height=height, plot_width=width, title="", 
-              x_range=p.x_range,
-              y_range=p.y_range,
-              toolbar_location='left', 
-              tools='pan,wheel_zoom,reset,lasso_select,save', 
-              match_aspect=True,
-              output_backend='webgl')
-pimg.image_rgba(image='value', source=figure_sources['image_data'],
-                x='x0',y='y0',dw='dw',dh='dh')
+# pimg = figure(plot_height=height, plot_width=width, title="", 
+#               x_range=p.x_range,
+#               y_range=p.y_range,
+#               toolbar_location='left', 
+#               tools='pan,wheel_zoom,reset,lasso_select,save', 
+#               match_aspect=True,
+#               output_backend='webgl')
+# pimg.image_rgba(image='value', source=figure_sources['image_data'],
+#                 x='x0',y='y0',dw='dw',dh='dh')
+# tab2 = Panel(child=pimg, title='Image')
 
 
 ## -------------------------------------------------------------------
@@ -199,21 +215,21 @@ pnhist.xaxis.major_label_orientation = np.pi/2
 
 
 
-## -------------------------------------------------------------------
-#        Create a histogram of the image channel we're editing
-## -------------------------------------------------------------------
-pedit = figure(plot_height=200, plot_width=300, toolbar_location=None,
-               output_backend='webgl', title='Intensity',
-               x_axis_label='Intensity',
-               y_axis_label='pixels (log)'
-              )
-pedit_data_source = ColumnDataSource({'value': [0]*shared_variables['nbins'], 
-                                      'x': range(shared_variables['nbins'])})
-pedit.vbar(x='x', top='value', source=figure_sources['intensity_hist'], width=0.9,)
-pedit.xaxis.axis_label_text_font_size = '10pt'
-pedit.yaxis.axis_label_text_font_size = '10pt'
-pedit.xaxis.major_label_text_font_size = '8pt'
-pedit.yaxis.major_label_text_font_size = '8pt'
+# ## -------------------------------------------------------------------
+# #        Create a histogram of the image channel we're editing
+# ## -------------------------------------------------------------------
+# pedit = figure(plot_height=200, plot_width=300, toolbar_location=None,
+#                output_backend='webgl', title='Intensity',
+#                x_axis_label='Intensity',
+#                y_axis_label='pixels (log)'
+#               )
+# pedit_data_source = ColumnDataSource({'value': [0]*shared_variables['nbins'], 
+#                                       'x': range(shared_variables['nbins'])})
+# pedit.vbar(x='x', top='value', source=figure_sources['intensity_hist'], width=0.9,)
+# pedit.xaxis.axis_label_text_font_size = '10pt'
+# pedit.yaxis.axis_label_text_font_size = '10pt'
+# pedit.xaxis.major_label_text_font_size = '8pt'
+# pedit.yaxis.major_label_text_font_size = '8pt'
 
 
 
@@ -236,22 +252,31 @@ boxplot_module = BokehBoxPlot(shared_variables['adata_data'],
 
 figures = dict(
   scatter_plot = p,
-  image_plot = pimg,
+  image_plot = img_plot,
   cluster_hist = phist,
   neighbor_hist = pnhist,
-  intensity_hist = pedit,
+  # intensity_hist = pedit,
   # scatter_gate = scatter_gate_module,
   boxplot = boxplot_module
 )
 
+
+
+
+
+
+
 ## -------------------------------------------------------------------
 #                      Set up the app layout
 ## -------------------------------------------------------------------
+
 left_inputs = column([
   widgets['input_file'],
   widgets['cluster_select'], 
   widgets['clear_clusters'], 
-  widgets['cluster_view_opts'],],
+  widgets['cluster_view_opts'],
+  widgets['dot_size'],
+  ],
   margin=(10,10,10,10),
   width=200)
 left_inputs.sizing_mode = 'stretch_height'
@@ -262,7 +287,8 @@ for ch in shared_variables['all_channels']:
   color_inputs.append(row([
     widgets[f'focus_channel_{ch}'],
     widgets[f'color_picker_{ch}'],
-    widgets[f'color_saturation_{ch}'],
+    widgets[f'color_saturation_{ch}_low'],
+    widgets[f'color_saturation_{ch}_high'],
   ]))
 
 right_inputs = column( [widgets['update_image']] + color_inputs, 
@@ -279,7 +305,10 @@ selection_hists = row(
 )
 
 all_plots = layout([
-  [figures['scatter_plot'], figures['image_plot']], 
+  [figures['scatter_plot']],
+  # [figures['scatter_plot'], figures['image_plot']], 
+  # [figures['scatter_plot'], Tabs(tabs=[tab1,tab2])], 
+  # [Tabs(tabs=[tab1, tab2])],
   [selection_hists],
   [figures['boxplot'].p]
 ], sizing_mode='scale_both')
@@ -414,13 +443,13 @@ def update_scatter():
 
   fg_colors[~shared_variables['highlight_cells']] = shared_variables['background_color']
 
-  sizes = np.zeros(shared_variables['adata_data'].shape[0])+8
+  sizes = np.zeros(shared_variables['adata_data'].shape[0])+widgets['dot_size'].value
   if 1 in widgets['cluster_view_opts'].active:
     logger.info('coloring neighbors')
     fg_colors[shared_variables['neighbor_cells']] = shared_variables['neighbor_color']
-    sizes[~shared_variables['highlight_cells'] & ~shared_variables['neighbor_cells']] = 5
-  else:
-    sizes[~shared_variables['highlight_cells']] = 5
+    # sizes[~shared_variables['highlight_cells'] & ~shared_variables['neighbor_cells']] = 3
+  # else:
+  #   sizes[~shared_variables['highlight_cells']] = 3
 
   figures['scatter_plot'].title.text = "Highlighting %d cells" % n_hl
   figures['cluster_hist'].title.text = "Highlighting %d cells" % n_hl
@@ -432,10 +461,20 @@ def update_scatter():
     s=sizes,
     index=shared_variables['adata_data']['index_num'],
     annotation=shared_variables['adata_data'][default_annotation], # have to change this to allow switching the shown annotations
+    cluster=shared_variables['adata_data']['groups_main_features'], # have to change this to allow switching the shown annotations
     active_color=fg_colors,
   )
   update_clusters_hist()
   update_neighbors_hist()
+
+  # Hide the scatter plot beneath the image. This should do nothing if no image is shown
+  if 2 in widgets['cluster_view_opts'].active:
+    logger.info('Hiding scatter plot')
+    figures['image_plot'].level = 'overlay'
+  else:
+    logger.info('Showing scatter plot')
+    figures['image_plot'].level = 'underlay'
+
 
 
 # https://docs.bokeh.org/en/latest/docs/gallery/color_sliders.html
@@ -458,8 +497,10 @@ def update_color(ch):
 
 def update_intensity(ch):
   def _update_intensity(attr, old, new):
-    print(f'setting channel {ch} saturation to', new)
-    shared_variables['saturation_vals'][ch] = new
+    low = widgets[f'color_saturation_{ch}_low'].value
+    high = widgets[f'color_saturation_{ch}_high'].value
+    print(f'setting channel {ch} saturation to', low, high)
+    shared_variables['saturation_vals'][ch] = (low, high)
   return _update_intensity
 
 
@@ -507,10 +548,12 @@ widgets['clear_clusters'].on_click(update_functions['handle_clear_clusters'])
 widgets['clear_channels'].on_click(update_functions['handle_clear_channels'])
 widgets['update_image'].on_click(update_functions['handle_update_image'])
 widgets['input_file'].on_change('value', update_functions['handle_change_input_file'])
+widgets['dot_size'].on_change('value', lambda attr, old, new: update_functions['update_scatter']())
 
 for ch in shared_variables['all_channels']:
   widgets[f'color_picker_{ch}'].on_change('color', update_functions[f'update_color_{ch}'])
-  widgets[f'color_saturation_{ch}'].on_change('value', update_functions[f'update_intensity_{ch}'])
+  widgets[f'color_saturation_{ch}_low'].on_change('value', update_functions[f'update_intensity_{ch}'])
+  widgets[f'color_saturation_{ch}_high'].on_change('value', update_functions[f'update_intensity_{ch}'])
   widgets[f'focus_channel_{ch}'].on_click(update_functions[f'handle_focus_channel_{ch}'])
 widgets[f'focus_channel_nuclei'].on_click(update_functions[f'handle_focus_channel_nuclei'])
 

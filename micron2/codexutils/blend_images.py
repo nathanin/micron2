@@ -77,7 +77,7 @@ def blend_images(images, saturation_vals=None, colors=None,
 
   Args:
     images (np.uint8): (height, width, channels) the raw image data
-    saturation_vals (list uint8): saturation values for each channel
+    saturation_vals (list of tuples (uint8, uint8)): saturation values for each channel
     colors (list, np.ndarray): colors for each channel to gradate towards from black
     nuclei (np.ndarray, bool): a mask to apply after the image is blended
     nuclei_color (tuple, uint8): the color to use for nuclei mask
@@ -88,7 +88,11 @@ def blend_images(images, saturation_vals=None, colors=None,
   nc = images.shape[-1]
   if saturation_vals is None:
     # Default to 99%
-    saturation_vals = [np.quantile(images[:,:,c], 0.99).astype(np.uint8) for c in range(nc)]
+    saturation_vals = []
+    for c in range(nc):
+      h = int(np.quantile(images[:,:,c], 0.99))
+      l = int(h/256)
+      saturation_vals.append((l, h))
 
   if colors is None:
     colors = (np.array(sns.color_palette(palette='tab20', n_colors=nc))*255).astype(np.uint8)
@@ -99,10 +103,11 @@ def blend_images(images, saturation_vals=None, colors=None,
   view = blended.view(dtype=np.uint8).reshape((h,w,4))
   for c in range(nc):
     img = images[:,:,c]
-    sat_val = saturation_vals[c]
-    sat_val = max(1, sat_val) # sometimes the 99th percentile can be 0
-    img[img > sat_val] = sat_val
-    img = img / sat_val
+    low_sat_val, high_sat_val = saturation_vals[c]
+    high_sat_val = max(1, high_sat_val) # sometimes the 99th percentile can be 0
+    img[img < low_sat_val] = 0
+    img[img > high_sat_val] = high_sat_val
+    img = img / high_sat_val
 
     img = (255 * img).astype(np.uint8) / 255.
     
