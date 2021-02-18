@@ -101,6 +101,7 @@ def blend_images(images, saturation_vals=None, colors=None,
   h, w = images.shape[:2]
   blended = np.zeros((h,w), dtype=np.uint32)
   view = blended.view(dtype=np.uint8).reshape((h,w,4))
+  # Loop 1. normalize all channels to [0,1]
   for c in range(nc):
     img = images[:,:,c]
     low_sat_val, high_sat_val = saturation_vals[c]
@@ -108,12 +109,22 @@ def blend_images(images, saturation_vals=None, colors=None,
     img[img < low_sat_val] = 0
     img[img > high_sat_val] = high_sat_val
     img = img / high_sat_val
-
     img = (255 * img).astype(np.uint8) / 255.
+    # images[:,:,c] = img
     
-    view[:,:,0] += (img * colors[c,0]).astype(np.uint8)
-    view[:,:,1] += (img * colors[c,1]).astype(np.uint8)
-    view[:,:,2] += (img * colors[c,2]).astype(np.uint8)
+  # image_norm = np.max(images, axis=-1)
+
+  # Loop 2. use the overall weights to properly color the image
+  # for c in range(nc):
+  #   img = images[:,:,c]
+    # img = img/image_norm
+    view[:,:,0] = np.clip(view[:,:,0] + (img * colors[c,0]), 0, 255).astype(np.uint8)
+    view[:,:,1] = np.clip(view[:,:,1] + (img * colors[c,1]), 0, 255).astype(np.uint8)
+    view[:,:,2] = np.clip(view[:,:,2] + (img * colors[c,2]), 0, 255).astype(np.uint8)
+
+    # view[:,:,0] += (img * colors[c,0]).astype(np.uint8)
+    # view[:,:,1] += (img * colors[c,1]).astype(np.uint8)
+    # view[:,:,2] += (img * colors[c,2]).astype(np.uint8)
 
   view[:,:,3] = 255 # Solid alpha?
 
