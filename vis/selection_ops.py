@@ -130,12 +130,12 @@ def update_image_plot(shared_variables, widgets, figure_sources, figures):
   for i,c in enumerate(use_channels):
     slow, shigh = saturation_vals[c] 
 
-    # if (slow is None) or (slow == 0):
-    #   img = images[:,:,i]
-    #   if img.sum() == 0:
-    #     slow = 0
-    #   else:
-    #     slow = int(np.max(img)/256)
+    if (slow is None) or (slow == 0):
+      img = images[:,:,i]
+      if img.sum() == 0:
+        slow = 0
+      else:
+        slow = int(np.max(img)/256)
 
     if (shigh is None) or (shigh == 0):
       img = images[:,:,i]
@@ -145,7 +145,7 @@ def update_image_plot(shared_variables, widgets, figure_sources, figures):
         vals = img.ravel()[img.ravel()>0]
         shigh = np.quantile(vals, 0.99)
 
-    slow = int(shigh / 256)
+    #slow = int(shigh / 256)
 
     # make sure the saturation val widget reflects the value being drawn
     widgets[f'color_saturation_{c}_low'].value = slow

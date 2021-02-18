@@ -52,8 +52,8 @@ from .boxplot import BokehBoxPlot
 # The problem is setting up all the widgets requires data
 # that i pull in from the active file.
 data_dir = '/storage/codex/preprocessed_data'
-full_sample_id = f'210125_Breast_Cassette5_reg1'
-default_annotation = 'annotation_main_features'
+full_sample_id = f'210113_Breast_Cassette11_reg1'
+default_annotation = 'annotation_subtype'
 
 shared_variables = {}
 active_file = f'{data_dir}/{full_sample_id}/{full_sample_id}.h5ad'
@@ -98,7 +98,7 @@ widgets = dict(
   update_image = Button(label='Update drawing', button_type='success'),
   # data_home = TextInput(name='Data home', placeholder='Enter full path to data home'),
   input_file = TextInput(placeholder='Enter full path to sample h5ad'),
-  dot_size = Spinner(low=1, high=30, step=1, value=10, css_classes=["my-widgets"], name='Dot size', width=50)
+  dot_size = Spinner(low=1, high=30, step=1, value=15, css_classes=["my-widgets"], name='Dot size', width=50)
 )
 
 ## Add selector for showing nuclei & nuclei color
@@ -110,10 +110,10 @@ for ch in shared_variables['all_channels']:
   widgets[f'focus_channel_{ch}'] = Toggle(label=ch, button_type='success', width=75)
   widgets[f'color_picker_{ch}'] = ColorPicker(width=50, color=rgb2hex(shared_variables['channel_colors'][ch]),
                                               css_classes=["my-widgets"])
-  widgets[f'color_saturation_{ch}_low'] = Spinner(low=0, high=255, step=5, tags=[ch], #title=f'{ch} saturation',           
-                                              width=50, value=0, css_classes=["my-widgets"])
-  widgets[f'color_saturation_{ch}_high'] = Spinner(low=0, high=255, step=5, tags=[ch], #title=f'{ch} saturation',           
-                                              width=50, value=0, css_classes=["my-widgets"])
+  widgets[f'color_saturation_{ch}_low'] = Spinner(low=0, high=int(2**16), step=5, tags=[ch], #title=f'{ch} saturation',           
+                                              width=75, value=0, css_classes=["my-widgets"])
+  widgets[f'color_saturation_{ch}_high'] = Spinner(low=0, high=int(2**16), step=5, tags=[ch], #title=f'{ch} saturation',           
+                                              width=75, value=0, css_classes=["my-widgets"])
   # widgets[f'color_saturation_{ch}'] = RangeSlider(start=0, end=int(2**16), step=5, tags=[ch], #title=f'{ch} saturation',           
   #                                             width=70, value=0, css_classes=["my-widgets"])
 
@@ -143,8 +143,8 @@ TOOLTIPS=[
     ("x", "@x"),
     ("y", "@y"),
 ]
-width = 200
-height = 200
+width = 300
+height = 300
 hover_tool = HoverTool(tooltips=TOOLTIPS)
 tools = [hover_tool, PanTool(), ResetTool(), WheelZoomTool(), BoxSelectTool(), PolySelectTool()]
 p = figure(plot_height=height, plot_width=width, title="", toolbar_location='left', 
