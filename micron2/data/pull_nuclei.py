@@ -69,6 +69,8 @@ def get_masks(nuclei_img, xy_coords, sizeh, write_size):
   return masks
 
 
+
+
 def get_channel_means(h5f, group_name='intensity', 
                       idkey='meta/Cell_IDs',
                       use_masks=True,
@@ -118,6 +120,15 @@ def get_channel_means(h5f, group_name='intensity',
 
   if return_values:
     return vals 
+
+
+def image_stats(pixels):
+  mean = np.mean(pixels)
+  pct = np.mean(pixels > 0)
+  sd = np.std(pixels)
+  qs = np.quantile(pixels, [0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99])
+  info = np.array([ mean, sd, pct] + list(qs))
+  return info
 
 
 def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img, tissue_img,
@@ -172,10 +183,6 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
 
   if tissue_img is not None:
     tissue = cv2.imread(tissue_img,-1) > 0
-    #ts = pytiff.Tiff(tissue_img)
-    #tissue = ts[:]
-    #ts.close()
-
 
   # Commence pulling cells 
   print(f'Pulling {coords.shape[0]} cells')
@@ -183,21 +190,10 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
     h = pytiff.Tiff(pth)
     page = h.pages[0][:]
 
-    # # Nuclei-focused low-level detection
-    # # TODO allow changing background size
-    # ncells = coords.shape[0]
-    # background_ids = np.random.choice(ncells, min(ncells,15000), replace=False)
-    # background_imgs = []
-    # for i in background_ids:
-    #   x = coords.X[i]
-    #   y = coords.Y[i]
-    #   bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
-    #   img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
-    #   background_imgs.append(img_raw.ravel().copy())
-
-    # background_imgs = np.concatenate(background_imgs).ravel()
-    # thr = threshold_otsu(background_imgs)/2
-    # thr = max(min_thresh, thr)
+    # Set up for pulling stats
+    # if nuclei_img is not None:
+    nuclei_stats = []
+    membrane_stats = []
 
     # Use the FIJI/ImageJ 'Auto' Contrast histogram method to find a low cutoff
     if tissue_img is not None:
@@ -212,12 +208,12 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
     d.attrs['threshold'] = thr
 
     if c=='DAPI':
+      print('Skipping DAPI channel thresholding')
       pass
     else:
       print(f'Channel {c} subtracting constant {thr}')
     
     i = 0
-    channel_means = []
     with tqdm(zip(coords.X, coords.Y), total=coords.shape[0], disable=None) as pbar:
       pbar.set_description(f'Pulling nuclei from channel {c}')
       for x, y in pbar:
@@ -226,36 +222,44 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
         
         # do not alter the DAPI
         if c=='DAPI':
-          print('Skipping DAPI channel thresholding')
           pass
         else:
           thr_mask = img_raw<thr
           img_raw[thr_mask] = 0
           img_raw[~thr_mask] = img_raw[~thr_mask]-thr
 
-        if nuclei_img is not None:
-          mask = h5f['meta/nuclear_masks'][i,...]
-          img_avg = np.mean(img_raw[mask])
-        else:
-          img_avg = np.mean(img_raw)
+        nuclei_mask = h5f['meta/nuclear_masks'][i,...]
+        img_info = image_stats(img_raw[nuclei_mask].ravel())
+        nuclei_stats.append(img_info.copy())
+
+        membrane_mask = h5f['meta/membrane_masks'][i,...]
+        img_info = image_stats(img_raw[membrane_mask].ravel())
+        membrane_stats.append(img_info.copy())
 
         ## Adjust low values and convert to uint8...
-        #img_raw[img_raw<thr] = 0
         img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
 
         if scale_factor != 1:
-          # img = cv2.resize(img, dsize=(0,0), fx=scale_factor, fy=scale_factor)
           img = cv2.resize(img, dsize=(write_size, write_size))
 
         d[i,...] = img
-        channel_means.append(img_avg)
         i += 1
 
-    print(f'Channel {c} got {(np.array(channel_means)==0).mean():3.3f}% zeros')
+    nuclei_stats = np.stack(nuclei_stats, axis=0).astype(np.float32)
+    print(f'Channel {c} got {100*(nuclei_stats[:,0]==0).mean():3.3f}% nuclei zeros')
 
-    mean_dataset = h5f.create_dataset(f'cell_intensity/{c}', data=np.array(channel_means, dtype=np.float32))
-    mean_dataset.attrs['mean'] = np.mean(channel_means)
-    mean_dataset.attrs['std'] = np.std(channel_means)
+    nuclei_stat_dataset = h5f.create_dataset(f'cell_nuclei_stats/{c}', data=nuclei_stats)
+    nuclei_stat_dataset.attrs['label'] = 'mean,std,percent_positive,q01,q10,q25,q50,q75,q90,q95,q99'
+    nuclei_stat_dataset.attrs['mean'] = np.mean(nuclei_stats, axis=0)
+    nuclei_stat_dataset.attrs['std'] = np.std(nuclei_stats, axis=0)
+
+    membrane_stats = np.stack(membrane_stats, axis=0).astype(np.float32)
+    print(f'Channel {c} got {100*(membrane_stats[:,0]==0).mean():3.3f}% membrane zeros')
+
+    membrane_stat_dataset = h5f.create_dataset(f'cell_membrane_stats/{c}', data=membrane_stats)
+    membrane_stat_dataset.attrs['label'] = 'mean,std,percent_positive,q01,q10,q25,q50,q75,q90,q95,q99'
+    membrane_stat_dataset.attrs['mean'] = np.mean(membrane_stats, axis=0)
+    membrane_stat_dataset.attrs['std'] = np.std(membrane_stats, axis=0)
 
     h.close()
     h5f.flush()
@@ -271,7 +275,6 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
   d.attrs['original_size'] = size
   d.attrs['written_size'] = write_size
   d.attrs['scale_factor'] = scale_factor
-
 
 
 
@@ -333,10 +336,7 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
 
   if tissue_img is not None:
     tissue = cv2.imread(tissue_img, -1) > 0
-    #ts = pytiff.Tiff(tissue_img)
-    #tissue = ts[:]
-    #ts.close()
-
+ 
   if debug:
     coords = coords[:50]
 
@@ -357,23 +357,6 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
     h = pytiff.Tiff(pth)
     page = h.pages[0][:]
 
-    # # TODO allow changing background size
-    # # TODO (nathanin) factor this into a function
-    # ncells = len(coords)
-    # background_ids = np.random.choice(ncells, min(ncells,15000), replace=False)
-    # background_imgs = []
-    # for i in background_ids:
-    #   x = coords[i][1]
-    #   y = coords[i][0]
-    #   bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
-    #   img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
-    #   background_imgs.append(img_raw.ravel().copy())
-
-    # background_imgs = np.concatenate(background_imgs).ravel()
-    # thr = threshold_otsu(background_imgs)/2
-    # thr = max(min_thresh, thr)
-    # d.attrs['threshold'] = thr
-
     # Use the FIJI/ImageJ 'Auto' Contrast histogram method to find a low cutoff
     if tissue_img is not None:
       N, bins = np.histogram(page[tissue].ravel(), 256)
@@ -387,10 +370,14 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
     thr = max(min_thresh, thr)
     d.attrs['threshold'] = thr
 
-    print(f'Channel {c} subtracting constant {thr}')
+    if 'DAPI' in c:
+      print('Skipping DAPI channel thresholding')
+      pass
+    else:
+      print(f'Channel {c} subtracting constant {thr}')
     
     i = 0
-    channel_means = []
+    channel_stats = []
     with tqdm(coords, total=len(coords), disable=None) as pbar:
       pbar.set_description(f'Pulling tiles from channel {c}')
       for coord in pbar:
@@ -400,14 +387,15 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
         raw_img = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
 
         if 'DAPI' in c:
-          print('Skipping DAPI channel thresholding')
           pass
         else:
           thr_mask = raw_img < thr
           raw_img[thr_mask] = 0
           raw_img[~thr_mask] = raw_img[~thr_mask] - thr
 
-        img_avg = np.mean(raw_img)
+        # img_avg = np.mean(raw_img)
+        img_info = image_stats(raw_img.ravel())
+        channel_stats.append(img_info.copy())
 
         # raw_img[raw_img<thr] = 0
         img = np.ceil(255 * (raw_img / 2**16)).astype(np.uint8)
@@ -419,13 +407,14 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
         d[i,...] = img
         i += 1
 
-    mean_dataset = h5f.create_dataset(f'tile_intensity/{c}', data=np.array(channel_means, dtype=np.float32))
-    mean_dataset.attrs['mean'] = np.mean(channel_means)
-    mean_dataset.attrs['std'] = np.std(channel_means)
+    channel_stats = np.stack(channel_stats, axis=0).astype(np.float32)
+    stats_dataset = h5f.create_dataset(f'tile_stats/{c}', data=channel_stats)
+    stats_dataset.attrs['label'] = 'mean,std,percent_positive,q01,q10,q25,q50,q75,q90,q95,q99'
+    stats_dataset.attrs['mean'] = np.mean(channel_stats)
+    stats_dataset.attrs['std'] = np.std(channel_stats)
 
     h.close()
     h5f.flush()
-
 
   # for annotating the nuclei with centroids contained in each tile
   encapsulated_cell_ids_s = str(encapsulated_cell_ids)
@@ -529,36 +518,3 @@ def pull_nuclei(coords, image_paths, out_file='dataset.hdf5', nuclei_img=None,
                         tile_scale_factor, overlap, min_area, tissue_img=tissue_img, debug=debug)
 
   h5f.close()
-
-
-
-# if __name__ == '__main__':
-#   import argparse
-#   import glob
-#   parser = argparse.ArgumentParser()
-#   parser.add_argument('cell_file')
-#   parser.add_argument('image_dir')
-#   parser.add_argument('out_file')
-# 
-#   parser.add_argument('--size', type=int, default=64)
-#   parser.add_argument('--min_area', type=int, default=None)
-# 
-#   ARGS = parser.parse_args()
-#   cells = pd.read_csv(ARGS.cell_file, index_col=0, header=0)
-#   imagefs = glob.glob(f'{ARGS.image_dir}/*.tif')
-#   dapi_images = [f for f in imagefs if 'DAPI' in f]
-#   non_dapi_images = [f for f in imagefs if 'DAPI' not in f]
-#   non_dapi_images = [f for f in non_dapi_images if 'Blank' not in f]
-#   non_dapi_images = [f for f in non_dapi_images if 'Empty' not in f]
-# 
-#   channel_names = [os.path.basename(x) for x in non_dapi_images]
-#   channel_names = [x.replace(f'.tif','') for x in channel_names]
-#   channel_names = [x.split('_')[-2] for x in channel_names]
-#   # channel_names = [x.replace('-', '_') for x in channel_names]
-#   channel_names = ["DAPI"] + channel_names
-# 
-#   image_paths = [dapi_images[0]] + non_dapi_images
-#   #image_handles = [pytiff.Tiff(dapi_images[0])] + [pytiff.Tiff(f) for f in non_dapi_images]
-#   pull_nuclei(cells, image_paths, out_file=ARGS.out_file, 
-#               size=ARGS.size, min_area=ARGS.min_area, 
-#               channel_names=channel_names)
