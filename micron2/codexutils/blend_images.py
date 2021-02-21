@@ -131,7 +131,8 @@ def blend_images(images, saturation_vals=None, colors=None,
 
   if nuclei is not None:
     if nuclei.shape[0] != blended.shape[0]:
-      nuclei = cv2.resize(nuclei.astype(np.uint8), (w,h), interpolation=cv2.INTER_LINEAR)>0
+      nuclei = cv2.resize(nuclei.astype(np.uint8), (w,h), 
+        interpolation=cv2.INTER_LINEAR)>0
     view[nuclei,0] = nuclei_color[0]
     view[nuclei,1] = nuclei_color[1]
     view[nuclei,2] = nuclei_color[2]
