@@ -144,8 +144,7 @@ def _merge_image_datasets(h5fout, h5fs, dataset, channel, size, perm=None):
   #   d[:] = d[perm,...]
 
 
-
-def _merge_value_datasets(h5fout, h5fs, dataset, stats, perm=None):
+def _merge_value_datasets(h5fout, h5fs, dataset, stats, perm=None, transfer_attr=None):
   """ Merge scalar value datasets """
   values = []
   for h5f in h5fs:
@@ -158,6 +157,10 @@ def _merge_value_datasets(h5fout, h5fs, dataset, stats, perm=None):
     values = values[perm]
 
   d = h5fout.create_dataset(dataset, data=values)
+  if (transfer_attr is not None) and isintance(transfer_attr, list):
+    for a in transfer_attr:
+      with h5py.File(h5fs[0],'r') as f:
+        d.attr[a] = f[dataset].attr[a]
 
   if stats:
     d.attrs['mean'] = np.mean(values)
@@ -318,7 +321,9 @@ def hdf5_concat(h5fs, h5out, channels='all', sample_layout=None, dry_run=False):
       h5fout.flush()
  
     for ch in channels:
-      _merge_value_datasets(h5fout, h5fs, f'cell_intensity/{ch}', stats=True, perm=cell_perm)
+      _merge_value_datasets(h5fout, h5fs, f'cell_membrane_stats/{ch}', stats=True, perm=cell_perm, transfer_attr=['label'])
+      _merge_value_datasets(h5fout, h5fs, f'cell_nuclei_stats/{ch}', stats=True, perm=cell_perm, transfer_attr=['label'])
+      _merge_value_datasets(h5fout, h5fs, f'tile_stats/{ch}', stats=True, perm=cell_perm, transfer_attr=['label'])
       h5fout.flush()
 
     # TODO what? these are missing? 
