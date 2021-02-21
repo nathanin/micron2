@@ -125,6 +125,7 @@ class ScatterSettings:
                             width=100)
     self.choose_annotation = Select(title="Choose annotation:", 
                                options=[], css_classes=['my-widgets'])
+    self.hover_tooltips = MultiChoice(value=[], options=[])
 
   @property
   def layout(self):
@@ -132,6 +133,7 @@ class ScatterSettings:
         self.input_file,
         self.cluster_view_opts,
         self.dot_size,
+        self.hover_tooltips,
         self.clear_clusters,
         self.choose_annotation,
         self.cluster_select, 
@@ -306,6 +308,20 @@ class CodexViewer:
     self.scatter_widgets.cluster_select.on_click(lambda a: self.update_scatter())
     self.scatter_image.scatter.data_source.selected.on_change('indices', self.update_box_selection)
     self.image_colors.update_image.on_click(self.update_image_plot)
+    self.scatter_widgets.hover_tooltips.on_change('value', self.add_hover_data)
+
+
+  def add_hover_data(self, val):
+    hover_cols = self.scatter_widgets.hover_tooltips.value
+    tooltips = [
+      ("Index", "@index"),
+      ("x", "@x"),
+      ("y", "@y"),
+    ]
+    for col in hover_cols:
+      tooltips.insert(0, (col, f'@{col}'))
+      if col not in self.scatter_image.scatter_source.data.keys():
+        self.scatter_image.scatter_source.data[col] = self.shared_var['adata_data'][col].tolist()
 
 
   def set_annotation_groups(self, attr, old, new):
@@ -345,6 +361,8 @@ class CodexViewer:
       self.image_colors.add_channel(ch, default_color)
       color_widgets.append(self.image_colors.get_color_widget(ch))
     self.image_colors.layout.children = color_widgets
+
+    self.scatter_widgets.hover_tooltips.options = self.shared_var['adata_data'].columns.tolist()
 
     # This is a hack to pass a value through to update_scatter without introducing an arg.
     inds = np.arange(self.shared_var['n_cells'])
