@@ -28,7 +28,7 @@ def get_channel_image_path(data_dir, channel):
   return None
 
 
-def set_active_slide(adata_path, shared_variables, annotation_col, logger):
+def set_active_slide(adata_path, shared_variables, logger):
   """ Load a sample's AnnData representation and populate variables
 
   Assume directory structure:
@@ -72,16 +72,17 @@ def set_active_slide(adata_path, shared_variables, annotation_col, logger):
   data['coordinates_1'] = ad.obsm['coordinates'][:,0].copy()
   data['coordinates_2'] = ad.obsm['coordinates'][:,1].copy()
 
-  n_clusters = len(np.unique(ad.obs[annotation_col]))
-  if f'{annotation_col}_colors' in ad.uns.keys():
-    cluster_colors = ad.uns[f'{annotation_col}_colors']
-    color_map = {k: v for k, v in zip(np.unique(ad.obs[annotation_col]), cluster_colors)}
-  else:
-    cluster_colors = sns.color_palette('Set1', n_clusters)
-    cluster_colors = np.concatenate([cluster_colors, np.ones((n_clusters, 1))], axis=1)
-    color_map = {k: rgb2hex(v) for k, v in zip(np.unique(ad.obs[annotation_col]), cluster_colors)}
+  # n_clusters = len(np.unique(ad.obs[annotation_col]))
+  # if f'{annotation_col}_colors' in ad.uns.keys():
+  #   cluster_colors = ad.uns[f'{annotation_col}_colors']
+  #   color_map = {k: v for k, v in zip(np.unique(ad.obs[annotation_col]), cluster_colors)}
+  # else:
+  #   cluster_colors = sns.color_palette('Set1', n_clusters)
+  #   cluster_colors = np.concatenate([cluster_colors, np.ones((n_clusters, 1))], axis=1)
+  #   color_map = {k: rgb2hex(v) for k, v in zip(np.unique(ad.obs[annotation_col]), cluster_colors)}
+  # data['color'] = [color_map[g] for g in ad.obs[annotation_col]]
 
-  data['color'] = [color_map[g] for g in ad.obs[annotation_col]]
+  data['color'] = ['#94b5eb']*ad.shape[0]
 
   # coords are stored with Y inverted for plotting with matplotlib.. flip it back for pulling from the images.
   coords = ad.obsm['coordinates']
@@ -91,10 +92,11 @@ def set_active_slide(adata_path, shared_variables, annotation_col, logger):
   #                      Shared variables
   ## -------------------------------------------------------------------
 
-  clusters = np.array(ad.obs[annotation_col])
-  all_clusters = list(np.unique(clusters))
+  # clusters = np.array(ad.obs[annotation_col])
+  # all_clusters = list(np.unique(clusters))
   # all_channels = [k for k, i in ad.uns['image_sources'].items()]
-  all_channels = sorted(ad.var_names.to_list())
+  # all_channels = sorted(ad.var_names.to_list())
+  all_channels = ad.uns['channels']
   active_raw_images = {c: None for c in all_channels}
   saturation_vals = {c: (0,0) for c in all_channels} # TODO config default saturation values
   neighbor_indices = get_neighbors(coords)
@@ -105,15 +107,15 @@ def set_active_slide(adata_path, shared_variables, annotation_col, logger):
 
   channel_colors = np.array(sns.color_palette('Set1', n_colors=len(all_channels)))
   channel_colors = np.concatenate([channel_colors, np.ones((len(all_channels), 1))], axis=1)
-  channel_colors = {c: color for c, color in zip(all_channels, channel_colors)}
+  channel_colors = {c: rgb2hex(color) for c, color in zip(all_channels, channel_colors)}
 
   # path for nuclear segmentation
   nuclei_path = f'{data_dir}/{full_sample_id}_2_nuclei.tif'
 
   _shared_variables = dict(
-    clusters = clusters,
-    n_cells = len(clusters),
-    all_clusters = all_clusters,
+    # clusters = clusters,
+    n_cells = ad.shape[0],
+    # all_clusters = all_clusters,
     all_channels = all_channels,
     bbox = [0,0,0,0],
     active_raw_images = active_raw_images,
@@ -134,8 +136,11 @@ def set_active_slide(adata_path, shared_variables, annotation_col, logger):
     neighbor_cells = np.zeros(coords.shape[0], dtype=bool),
     nuclei_path = nuclei_path,
     adata_data=data,
+    color=['#94b5eb']*ad.shape[0],
+    adata=ad,
     y_shift=min(-coords[:,1]),
-    x_shift=min(coords[:,0])
+    x_shift=min(coords[:,0]),
+    categoricals = list(ad.obs.columns[ad.obs.dtypes == 'category'])
   )
 
   shared_variables.update(_shared_variables)

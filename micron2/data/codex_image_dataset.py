@@ -12,8 +12,8 @@ import ast
 
 
 def load_as_anndata(h5data, obs_names='meta/Cell_IDs', 
-                    featurekey = 'cell_intensity',
-                    membrane_featurekey = None,
+                    featurekey = 'cell_nuclei_stats',
+                    membrane_featurekey = 'cell_membrane_stats',
                     coordkey = 'meta/cell_coordinates',
                     flip_y=True, 
                     reverse_coords=False,
@@ -85,33 +85,45 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
     coordinates[:,1] = -coordinates[:,1] # Flip Y for matplotlib axis conventions
 
   obsm_dict = dict(coordinates=coordinates)
+  print('Finished gathering obsm')
   # ----------------------------- / Build OBSM -----------------------------------
   
-  features = np.zeros((len(cell_ids), len(channel_names)), dtype=np.float32)
+  # features = np.zeros((len(cell_ids), len(channel_names)), dtype=np.float32)
+  features = []
+  feature_names = []
+  base_feature_names = h5f[f'{featurekey}/{channel_names[0]}'].attrs['label'].split(',')
 
   # Check for sameness of length btw features and "cells"
   vals = h5f[f'{featurekey}/{channel_names[0]}'][:]
-  if vals.shape[0] == len(cell_ids):
-    for i, channel in enumerate(channel_names):
-      vals = h5f[f'{featurekey}/{channel}'][:]
-      features[:, i] = vals
-  else:
-    warnings.warn(f'Values ({vals.shape[0]}) mismatch cell ids ({len(cell_ids)})')
+  for i, channel in enumerate(channel_names):
+    vals = h5f[f'{featurekey}/{channel}'][:] # N x 11
+    # features[:, i] = vals
+    features.append(vals.copy())
+    feature_names += [f'{channel}_nuclei_{feature}' for feature in base_feature_names]
+  features = np.concatenate(features, axis=1)
+  print(f'Loaded nuclear features: {features.shape}')
 
 
   if membrane_featurekey is not None:
-    membrane_features = np.zeros((len(cell_ids), len(channel_names)), dtype=np.float32)
+    # membrane_features = np.zeros((len(cell_ids), len(channel_names)), dtype=np.float32)
+    membrane_features = []
+    membrane_feature_names = []
     vals = h5f[f'{membrane_featurekey}/{channel_names[0]}'][:]
-    if vals.shape[0] == len(cell_ids):
-      for i, channel in enumerate(channel_names):
-        vals = h5f[f'{membrane_featurekey}/{channel}'][:]
-        membrane_features[:, i] = vals
-    else:
-      warnings.warn(f'Membrane feature values ({vals.shape[0]}) mismatch cell ids ({len(cell_ids)})')
+    for i, channel in enumerate(channel_names):
+      vals = h5f[f'{membrane_featurekey}/{channel}'][:]
+      # membrane_features[:, i] = vals
+      membrane_features.append(vals.copy())
+      membrane_feature_names += [f'{channel}_membrane_{feature}' for feature in base_feature_names]
+    membrane_features = np.concatenate(membrane_features, axis=1)
+    print(f'Loaded membrane features: {membrane_features.shape}')
+  
     features = np.concatenate([features, membrane_features], axis=1)
+    feature_names += membrane_feature_names
+    print(f'Joined nuclear and membrane features: {features.shape}')
+    print(f'Joined nuclear and membrane features: {len(feature_names)}')
 
   # ----------------------------- Build UNS -----------------------------------
-  uns_dict = dict(source_data=h5data)
+  uns_dict = dict(source_data=h5data, channels=channel_names)
   if recover_tile_nuclei:
     """
     Load the dictionary that describes the relationship between tiles and the
@@ -119,6 +131,7 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
 
     REF https://stackoverflow.com/a/48101771
     """
+    print('Recovering tile nuclei map')
     tile_nuclei = ast.literal_eval(h5f['images'].attrs['tile_encapsulated_cells'])
     uns_dict['tile_nuclei'] = tile_nuclei
 
@@ -126,16 +139,15 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
 
   # ----------------------------- / Build UNS -----------------------------------
 
-  feature_names = channel_names
-  if membrane_featurekey is not None:
-    for feature_name in feature_names:
-      feature_names.append(f'{feature_name}_membrane')
-
-  print(f'Features are {100*(features==0).sum()/np.prod(features.shape):2.2f}% zeros')
+  print('Generating AnnData object')
+  # feature_names = channel_names
+  # if membrane_featurekey is not None:
+  #   for feature_name in feature_names:
+  #     feature_names.append(f'{feature_name}_membrane')
 
   adata = AnnData(csr_matrix(features) if as_sparse else features, 
                   obs=pd.DataFrame(index=cell_ids),
-                  var=pd.DataFrame(index=channel_names),
+                  var=pd.DataFrame(index=feature_names),
                   obsm=obsm_dict,
                   uns=uns_dict)
 

@@ -4,13 +4,14 @@ from bokeh.models import (ColumnDataSource, BoxSelectTool, LassoSelectTool, Butt
 import logging
 from matplotlib.colors import rgb2hex
 from bokeh.models import Range1d
+import cv2
 
 from micron2.codexutils import get_images, blend_images, load_nuclei_mask
 
-# def make_logger():
-logger = logging.getLogger('viewer')
-logger.setLevel('INFO')
-print(logger.handlers)
+# # def make_logger():
+# logger = logging.getLogger('viewer')
+# logger.setLevel('INFO')
+# print(logger.handlers)
 
 
 def set_dropdown_menu(shared_variables, widgets):
@@ -52,7 +53,7 @@ def set_dropdown_menu(shared_variables, widgets):
 #   update_edit_hist(shared_variables, widgets, figure_sources, figures)
 
 
-def maybe_pull(use_channels, active_raw_images, image_sources, bbox):
+def maybe_pull(use_channels, active_raw_images, image_sources, bbox, resize, logger):
   ## Decide if we have to read images from disk or not
   need_to_pull = False
   for c in use_channels:
@@ -68,26 +69,37 @@ def maybe_pull(use_channels, active_raw_images, image_sources, bbox):
     images = get_images(use_files, bbox)
   else:
     try:
+      # this is an assertion that all images are the same size
       images = np.dstack([active_raw_images[c] for c in use_channels])
     except:
       images = get_images(use_files, bbox)
 
+  logger.info(f'Applying resize: {resize}')
+  image_resize = []
+  for i in range(images.shape[-1]):
+    img = images[:,:,i]
+    if resize != 1:
+      img = cv2.resize(img, dsize=(0,0), fx=resize, fy=resize)
+    image_resize.append(img)
+  image_resize = np.dstack(image_resize)
+
   for i, c in enumerate(use_channels):
     active_raw_images[c] = images[:,:,i].copy()
-  return images
+
+  return image_resize
 
 
-def _get_active_image_channels(widgets):
-  use_channels = []
-  for k, w in widgets.items():
-    if 'nuclei' in k:
-      continue
-    if 'focus_channel' in k:
-      ch = w.label
-      if w.active:
-        logger.info(f'requested to draw channel {ch}')
-        use_channels.append(ch)
-  return use_channels
+# def _get_active_image_channels(widgets):
+#   use_channels = []
+#   for k, w in widgets.items():
+#     if 'nuclei' in k:
+#       continue
+#     if 'focus_channel' in k:
+#       ch = w.label
+#       if w.active:
+#         logger.info(f'requested to draw channel {ch}')
+#         use_channels.append(ch)
+#   return use_channels
 
 # https://docs.bokeh.org/en/latest/docs/gallery/color_sliders.html
 def hex_to_dec(hex):
@@ -97,9 +109,9 @@ def hex_to_dec(hex):
   return np.array((int(red, 16), int(green, 16), int(blue,16), 255))
 
 
-def update_image_plot(shared_variables, widgets, figure_sources, figures):
+def update_image_plot(use_channels, shared_variables, widgets, figure_sources, figures, logger):
   # use_channels = shared_variables['use_channels']
-  use_channels = _get_active_image_channels(widgets)
+  # use_channels = _get_active_image_channels(widgets)
   channel_colors = shared_variables['channel_colors']
   saturation_vals = shared_variables['saturation_vals']
   bbox = shared_variables['bbox']
@@ -203,7 +215,7 @@ def update_image_plot(shared_variables, widgets, figure_sources, figures):
 
 
 
-def update_bbox(shared_variables, figures):
+def update_bbox(shared_variables, scatter_figure, logger):
   bbox = shared_variables['bbox']
   logger.info(f'BBOX updating bbox: old bbox: {bbox}')
   use_channels = shared_variables['use_channels']
@@ -238,10 +250,10 @@ def update_bbox(shared_variables, figures):
   dimg = max(dx, dy)
 
   # Maintain aspect ratios defined by the actual coordinates
-  figures['scatter_plot'].x_range.start = xmin_p
-  figures['scatter_plot'].x_range.end = xmin_p + dimg
-  figures['scatter_plot'].y_range.start = ymin_p# - shared_variables['y_shift']
-  figures['scatter_plot'].y_range.end = ymin_p + dimg# - shared_variables['y_shift']
+  scatter_figure.x_range.start = xmin_p
+  scatter_figure.x_range.end = xmin_p + dimg
+  scatter_figure.y_range.start = ymin_p# - shared_variables['y_shift']
+  scatter_figure.y_range.end = ymin_p + dimg# - shared_variables['y_shift']
 
   shared_variables['bbox_plot'] = [xmin_p, xmax_p, ymin_p, ymax_p]
 

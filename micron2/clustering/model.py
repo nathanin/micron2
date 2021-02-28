@@ -42,7 +42,7 @@ class Encoder(tf.keras.Model):
     self.z_dim = z_dim
     
     # perturb functions
-    self.contrast = RandomContrast(factor=[0.2,0.2])
+    # self.contrast = RandomContrast(factor=[0.2,0.2])
     self.flip = RandomFlip()
     self.rotate = RandomRotation(1, fill_mode='constant', fill_value=0)
     # self.translate = RandomTranslation(height_factor=(0.1, 0.1), 
@@ -69,9 +69,13 @@ class Encoder(tf.keras.Model):
     if self.g_network:
       self.g_fn_0 = Dense(self.g_dim*2, activation='relu')
       self.g_fn_1 = Dense(self.g_dim, activation=None)
+  
+  def train_step(self, x):
+    pass
 
   def perturb(self, x):
-    x = self.contrast(x)
+    # x = self.contrast(x)
+    x = tf.image.random_brightness(x, 0.2)
     x = self.flip(x)
     x = self.rotate(x)
     # x = self.translate(x)

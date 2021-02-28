@@ -19,3 +19,5 @@ notebook_stash/
 *.tar.gz
 
 *stardist_models/
+
+*.DS_Store

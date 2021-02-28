@@ -79,9 +79,23 @@ def stream_dataset(fpath, use_channels=['DAPI', 'CD45', 'PanCytoK'], group_name=
     dataset (tf.data.Dataset)
 
   """
-  channel_ds = [tfio.IODataset.from_hdf5(fpath, f'/{group_name}/{c}') for c in use_channels]
+  print(f'setting up dataset from {fpath} with channels {use_channels}')
+  spec = tf.uint8
+  channel_ds = [tfio.IODataset.from_hdf5(fpath, f'/{group_name}/{c}', spec=spec) for c in use_channels]
   dataset = (tf.data.Dataset.zip(tuple(channel_ds))
-            .map(process_channels))
+            .map(process_channels)
+            )
 
   return dataset
   
+
+AUTO = tf.data.experimental.AUTOTUNE
+def stream_dataset_parallel(fpaths, use_channels=['DAPI', 'CD45', 'PanCytoK'], group_name='cells'):
+  dataset = tf.data.Dataset.from_tensor_slices(fpaths)
+  def load_fn(fpath):
+    return stream_dataset(fpath, use_channels, group_name=group_name).repeat()
+
+  dataset = dataset.interleave(lambda x: load_fn(x), 
+                               cycle_length=len(fpaths), 
+                               block_length=4, num_parallel_calls=AUTO)
+  return dataset

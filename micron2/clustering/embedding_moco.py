@@ -4,25 +4,46 @@ import tqdm.auto as tqdm
 
 from .utils import perturb_x
 
-class MoCoQueue:
-  def __init__(self, max_queue_len=8):
-    self.Q = []
-    self.max_queue_len = max_queue_len
+
+# class MoCoQueue:
+#   def __init__(self, max_queue_len=8, zsize=128):
+#     # self.Q = []
+#     self.max_queue_len = max_queue_len
+#     self.zsize = zsize
+#     self.Q = tf.zeros((max_queue_len, zsize), dtype=tf.float32)
   
-  def __len__(self):
-    return len(self.Q)
+#   def __len__(self):
+#     return self.Q.shape[0]
       
-  def enqueue(self, z):
-    self.Q.append(z)
-    if len(self) > self.max_queue_len:
-      self.dequeue()
+#   def enqueue(self, z):
+#     self.Q.append(z)
+#     if len(self) > self.max_queue_len:
+#       self.dequeue()
   
-  def dequeue(self):
-    """ Remove the oldest item in queue """
-    _ = self.Q.pop(0)
+#   def dequeue(self):
+#     """ Remove the oldest item in queue """
+#     _ = self.Q.pop(0)
   
-  def getqueue(self):
-    return tf.concat(self.Q, axis=0)
+#   def getqueue(self):
+#     return tf.concat(self.Q, axis=0)
+
+class MoCoQueue:
+    def __init__(self, max_queue_len=4096, zsize=128):
+        self.Q = []
+        self.max_queue_len = max_queue_len
+        self.zsize = zsize
+        with tf.device('/CPU:0'):
+          self.Q = tf.zeros((max_queue_len, zsize), dtype=tf.float32)
+
+    def __len__(self):
+        return self.Q.shape[0]
+
+    def enqueue(self, z):
+        #self.Q.append(z)
+        n = z.shape[0]
+        i = tf.range(self.max_queue_len) < n
+        q = self.Q[~i]
+        self.Q = tf.concat([q, z], axis=0)
   
 
 def moco_loss(q_feat, key_feat, queue, batch_size=1, temp=1.):
@@ -57,7 +78,7 @@ def update_key_model(model, kmodel, momentum=0.999):
 
 
 def train_moco(dataset, model, kmodel, max_queue_len=32, crop_size=48, 
-               momentum=0.999, lr=1e-4, max_steps=1e5, temp=1.0,
+               momentum=0.999, lr=1e-4, max_steps=1e5, temp=1.0, zsize=128,
                perturb=True, perturb_fn=perturb_x):
   """ Train an image embedding model with Momentum Contrast
 
@@ -91,13 +112,15 @@ def train_moco(dataset, model, kmodel, max_queue_len=32, crop_size=48,
   """
   # Initialize the queue
   print('Initializing the key queue')
-  queue = MoCoQueue(max_queue_len=max_queue_len)
+  queue = MoCoQueue(max_queue_len=max_queue_len, zsize=zsize)
+  total_enqueued = 0
   for batch in dataset:
     if perturb:
       batch = perturb_fn(batch, crop_size=crop_size)
     key_feat = model.encode_g(batch)
     queue.enqueue(key_feat)
-    if len(queue) == max_queue_len:
+    total_enqueued += batch.shape[0]
+    if total_enqueued > max_queue_len:
       break
 
   optim = tf.keras.optimizers.Adam(learning_rate=lr)
@@ -118,7 +141,7 @@ def train_moco(dataset, model, kmodel, max_queue_len=32, crop_size=48,
           key_feat = kmodel.encode_g(batch) # A 'key' batch
         
         batch_size = q_feat.shape[0]
-        l = moco_loss(q_feat, key_feat, queue.getqueue(), batch_size=batch_size, temp=temp)
+        l = moco_loss(q_feat, key_feat, queue.Q, batch_size=batch_size, temp=temp)
 
       grads = tape.gradient(l, model.trainable_variables)
       optim.apply_gradients(zip(grads, model.trainable_variables))
