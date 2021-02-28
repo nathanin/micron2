@@ -43,7 +43,12 @@ Make a little class for each 'pane' that handles:
 TOOLTIPS=[
     # ("Annotation", "@annotation"),
     # ("Training", "@training"),
-    # ("Predict prob", "@predict_prob"),
+    ## We want to add columns dynamically, not have dummy columns with 0's at first.
+    ("celltype_rescued", "@celltype_rescued"),
+    # ("subtype", "@subtype"),
+    # ("predicted_proba", "@predicted_proba"),
+    # ("training_labels", "@training_labels"),
+    # ("immune_clusters", "@immune_clusters"),
     ("Index", "@index"),
     ("x", "@x"),
     ("y", "@y"),
@@ -55,6 +60,7 @@ class ScatterImagePane:
     self.logger = logger
     self.width = 300
     self.height = 300
+    # These are out here because we have two glyphs on the plot and only want tooltips for one.
     self.hover_tool = HoverTool(tooltips=TOOLTIPS)
     self.tools = [self.hover_tool, PanTool(), ResetTool(), 
                   WheelZoomTool(), BoxSelectTool()]
@@ -71,9 +77,9 @@ class ScatterImagePane:
     self.scatter_source = ColumnDataSource(
       data=dict(
           # x, y, s, index, and color are always here
-          x=[], y=[], s=[], index=[], color=[]
+          x=[], y=[], s=[], index=[], color=[],
           ## these need to get added in later, at the users discretion
-          # annotation=[], training=[], predict_prob=[], 
+          annotation=[], training=[], predict_prob=[], 
         )
       )
 
@@ -125,7 +131,10 @@ class ScatterSettings:
                             width=100)
     self.choose_annotation = Select(title="Choose annotation:", 
                                options=[], css_classes=['my-widgets'])
-    self.hover_tooltips = MultiChoice(value=[], options=[])
+    self.hover_tooltips = MultiChoice(value=[], options=[], width=200)
+
+  def set_annotation_mode(self):
+    pass
 
   @property
   def layout(self):
@@ -303,6 +312,7 @@ class CodexViewer:
 
   def register_callbacks(self):
     self.scatter_widgets.input_file.on_change('value', self.set_input_file)
+    self.scatter_widgets.cluster_view_opts.on_click(lambda x: self.update_scatter())
     self.scatter_widgets.choose_annotation.on_change('value', self.set_annotation_groups)
     self.scatter_widgets.dot_size.on_change('value', lambda a,o,n: self.update_scatter())
     self.scatter_widgets.cluster_select.on_click(lambda a: self.update_scatter())
@@ -310,18 +320,27 @@ class CodexViewer:
     self.image_colors.update_image.on_click(self.update_image_plot)
     self.scatter_widgets.hover_tooltips.on_change('value', self.add_hover_data)
 
-
-  def add_hover_data(self, val):
+  def add_hover_data(self, attr, old, new):
     hover_cols = self.scatter_widgets.hover_tooltips.value
+    self.logger.info(f'requested new hover tooltip value: {hover_cols}')
     tooltips = [
       ("Index", "@index"),
       ("x", "@x"),
       ("y", "@y"),
     ]
+    self.logger.info(f'Starting with {list(self.scatter_image.scatter_source.data.keys())}')
     for col in hover_cols:
+      self.logger.info(f'adding tooltip: {col}')
       tooltips.insert(0, (col, f'@{col}'))
       if col not in self.scatter_image.scatter_source.data.keys():
-        self.scatter_image.scatter_source.data[col] = self.shared_var['adata_data'][col].tolist()
+        data = dict(self.scatter_image.scatter_source.data)
+        self.logger.info(f'adding tooltip column to scatter data: {col}')
+        data[col] = self.shared_var['adata_data'][col].tolist()
+        self.scatter_image.scatter_source.data = data
+    self.logger.info(f'New scatter source columns: {self.scatter_image.scatter_source.data.keys()}')
+    self.logger.info(f'Setting tooltip tooltips to {tooltips}')
+    # self.scatter_image.hover_tool.tooltips = tooltips
+    self.scatter_image.p.select(HoverTool).tooltips = tooltips
 
 
   def set_annotation_groups(self, attr, old, new):
@@ -362,7 +381,8 @@ class CodexViewer:
       color_widgets.append(self.image_colors.get_color_widget(ch))
     self.image_colors.layout.children = color_widgets
 
-    self.scatter_widgets.hover_tooltips.options = self.shared_var['adata_data'].columns.tolist()
+    self.scatter_widgets.hover_tooltips.options = self.shared_var['adata'].obs.columns.tolist()
+    self.scatter_image.hover_tool.tooltips = TOOLTIPS
 
     # This is a hack to pass a value through to update_scatter without introducing an arg.
     inds = np.arange(self.shared_var['n_cells'])
@@ -389,16 +409,35 @@ class CodexViewer:
     sizes = np.zeros_like(colors, dtype=np.uint8)+self.scatter_widgets.dot_size.value
 
     self.scatter_image.p.title.text = f"Highlighting {n_hl} cells"
-    self.scatter_image.scatter_source.data = dict(
+    data =dict(
       x=self.shared_var['adata_data']['coordinates_1'],
       y=self.shared_var['adata_data']['coordinates_2']-self.shared_var['y_shift'],
       s=sizes,
       index=self.shared_var['adata_data']['index_num'],
       color=colors,
     )
+    ## Again, here we want to add these dynamically when requested, not using dummy values to pad missing
+    for col in ['celltype_rescued']:
+      if col in self.shared_var['adata_data'].columns:
+        self.logger.info(f'Setting values for hover tool field: {col}')
+        data[col] = self.shared_var['adata_data'][col]
+      else:
+        self.logger.info(f'Using FILLER values for hover tool field: {col}')
+        data[col] = [0]*self.shared_var['n_cells']
+
+    self.scatter_image.scatter_source.data = data
     if self.reframe:
       update_bbox(self.shared_var, self.scatter_image.p, self.logger)
     self.reframe=False
+
+    if 2 in self.scatter_widgets.cluster_view_opts.active:
+      self.logger.info('Hiding scatter plot')
+      self.scatter_image.img_plot.level = 'overlay'
+    else:
+      self.logger.info('Showing scatter plot')
+      self.scatter_image.img_plot.level = 'underlay'
+
+
 
 
   def update_box_selection(self, attr, old, new):

@@ -122,7 +122,6 @@ for ch in shared_variables['all_channels']:
 #                  Create data sources first
 ## -------------------------------------------------------------------
 
-dummy_data = np.zeros((5,5), dtype=np.uint32)
 figure_sources = dict(
   scatter_fg = ColumnDataSource(data=dict(x=[], y=[], s=[], index=[], annotation=[], training=[], predict_prob=[], color=[])),
   image_data = ColumnDataSource({'value': [], 'dw': [], 'dh': [], 'x0': [], 'y0': []}),

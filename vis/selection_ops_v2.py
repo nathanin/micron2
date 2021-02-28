@@ -78,7 +78,8 @@ def maybe_pull(use_channels, active_raw_images, image_sources, bbox, resize, log
   image_resize = []
   for i in range(images.shape[-1]):
     img = images[:,:,i]
-    img = cv2.resize(img, dsize=(0,0), fx=resize, fy=resize)
+    if resize != 1:
+      img = cv2.resize(img, dsize=(0,0), fx=resize, fy=resize)
     image_resize.append(img)
   image_resize = np.dstack(image_resize)
 
@@ -88,17 +89,17 @@ def maybe_pull(use_channels, active_raw_images, image_sources, bbox, resize, log
   return image_resize
 
 
-def _get_active_image_channels(widgets):
-  use_channels = []
-  for k, w in widgets.items():
-    if 'nuclei' in k:
-      continue
-    if 'focus_channel' in k:
-      ch = w.label
-      if w.active:
-        logger.info(f'requested to draw channel {ch}')
-        use_channels.append(ch)
-  return use_channels
+# def _get_active_image_channels(widgets):
+#   use_channels = []
+#   for k, w in widgets.items():
+#     if 'nuclei' in k:
+#       continue
+#     if 'focus_channel' in k:
+#       ch = w.label
+#       if w.active:
+#         logger.info(f'requested to draw channel {ch}')
+#         use_channels.append(ch)
+#   return use_channels
 
 # https://docs.bokeh.org/en/latest/docs/gallery/color_sliders.html
 def hex_to_dec(hex):
