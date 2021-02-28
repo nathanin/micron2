@@ -33,7 +33,12 @@ def hdf5_info(h5f, show_datasets=None, show_names=True):
         for a in attrs:
           print(f'{base} {d}\t{a}')
 
-      dkeys = list(f[d].keys())
+      try:
+        dkeys = list(f[d].keys())
+      except:
+        print(f'{base} {d}\tno keys')
+        continue
+
       print(f'{base} {d}\t--- {len(dkeys)} entries ---')
       if show_names:
         for k in dkeys:
