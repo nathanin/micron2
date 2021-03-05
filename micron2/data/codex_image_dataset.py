@@ -22,6 +22,7 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
                     recover_tile_nuclei=True,
                     keep_open=False,
                     as_sparse=True,
+                    features_dtype=np.uint16,
                     obsm=None):
   """
   Load a codex image dataset into an AnnData object
@@ -121,6 +122,9 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
     feature_names += membrane_feature_names
     print(f'Joined nuclear and membrane features: {features.shape}')
     print(f'Joined nuclear and membrane features: {len(feature_names)}')
+
+  if features_dtype is not None:
+    features = features.astype(features_dtype)
 
   # ----------------------------- Build UNS -----------------------------------
   uns_dict = dict(source_data=h5data, channels=channel_names)

@@ -11,7 +11,19 @@ def estimate_channel_background(source):
   pass
 
 
-def get_images(sources, bbox):
+def get_multiple_images(sources, bboxes):
+  regions = {i: [] for i in range(len(bboxes))}
+  for s in sources:
+    with pytiff.Tiff(s, "r") as f:
+      for i,bbox in enumerate(bboxes):
+        img_raw = f.pages[0][bbox[0]:bbox[1], bbox[2]:bbox[3]]
+        regions[i].append(img_raw)
+
+  regions = [np.dstack(r) for i,r in regions.items()]
+  return regions
+
+
+def get_images(sources, bbox, verbose=False):
   """ Get intensity images from the sources 
 
   Args:
@@ -25,25 +37,9 @@ def get_images(sources, bbox):
   images = []
   for s in sources:
     with pytiff.Tiff(s, "r") as f:
-      print(f'loading {bbox[0]} : {bbox[1]} and {bbox[2]} : {bbox[3]}')
+      if verbose:
+        print(f'loading {bbox[0]} : {bbox[1]} and {bbox[2]} : {bbox[3]}')
       img_raw = f.pages[0][bbox[0]:bbox[1], bbox[2]:bbox[3]]
-
-    # ## Auto threshold based on image histogram
-    # N, bins = np.histogram(img_raw.ravel(), 256)
-    # npix = np.cumsum(N)
-    # target = np.prod(img_raw.shape) / 10
-    # bin_index = np.argwhere(npix > target)[0,0]
-    # low_cutoff = int(bins[bin_index+1])
-    # low_cutoff = max(low_cutoff, 15)
-
-    # # ## Auto threshold to max / 256
-    # # low_cutoff = np.max(img_raw) / 256
-    # print(f'Applying cutoff of {low_cutoff} to {s.split("/")[-1]}')
-
-    # img_raw[img_raw < low_cutoff] = 0
-    # img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
-    # img = (255 * (img_raw / 2**16)).astype(np.uint8)
-
     images.append(img_raw)
 
   return np.dstack(images)
