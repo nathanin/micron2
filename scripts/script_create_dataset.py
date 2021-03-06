@@ -58,7 +58,7 @@ print(len(channel_names))
 image_paths = [dapi_images[0]] + non_dapi_images
 print(len(image_paths))
 
-out_file = f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}.hdf5'
+out_file = f'{ARGS.datahome}/{full_sample_id}/{full_sample_id}_v3.hdf5'
 
 pull_nuclei(cells, 
             image_paths, 

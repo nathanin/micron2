@@ -127,8 +127,14 @@ def image_stats(pixels):
   pct = np.mean(pixels > 0)
   sd = np.std(pixels)
   qs = np.quantile(pixels, [0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99])
-  info = np.array([ mean, sd, pct] + list(qs))
-  return info
+  pix_log = np.log1p(pixels)
+  npix = np.prod(pixels.shape)
+  c, b = np.histogram(pix_log, bins=8)
+  c = c / npix
+
+  info = np.array([ mean, sd, pct] + list(qs) + list(c))
+  info_labels = 'mean,std,percent_positive,q01,q10,q25,q50,q75,q90,q95,q99,b1,b2,b3,b4,b5,b6,b7,b8'
+  return info, info_labels
 
 
 def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, membrane_img, tissue_img,
@@ -195,24 +201,20 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
     nuclei_stats = []
     membrane_stats = []
 
-    # Use the FIJI/ImageJ 'Auto' Contrast histogram method to find a low cutoff
-    if tissue_img is not None:
-      N, bins = np.histogram(page[tissue].ravel(), 256)
-    else:
-      N, bins = np.histogram(page.ravel(), 256)
-    npix = np.cumsum(N)
-    target = np.prod(page.shape)/10
-    bin_index = np.argwhere(npix > target)[0,0]
-    thr = int(bins[bin_index+1])
-    thr = max(thr, min_thresh)
+    # # Use the FIJI/ImageJ 'Auto' Contrast histogram method to find a low cutoff
+    # if tissue_img is not None:
+    #   N, bins = np.histogram(page[tissue].ravel(), 256)
+    # else:
+    #   N, bins = np.histogram(page.ravel(), 256)
+
+    # npix = np.cumsum(N)
+    # target = np.prod(page.shape)/10
+    # bin_index = np.argwhere(npix > target)[0,0]
+    # thr = int(bins[bin_index+1])
+    # thr = max(thr, min_thresh)
+    thr = 0
     d.attrs['threshold'] = thr
 
-    if c=='DAPI':
-      print('Skipping DAPI channel thresholding')
-      pass
-    else:
-      print(f'Channel {c} subtracting constant {thr}')
-    
     i = 0
     with tqdm(zip(coords.X, coords.Y), total=coords.shape[0], disable=None) as pbar:
       pbar.set_description(f'Pulling nuclei from channel {c}')
@@ -220,20 +222,21 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
         bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
         img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
         
-        # do not alter the DAPI
-        if c=='DAPI':
-          pass
-        else:
-          thr_mask = img_raw<thr
-          img_raw[thr_mask] = 0
-          img_raw[~thr_mask] = img_raw[~thr_mask]-thr
+        ## Block commented --- no modification of the original image
+        # # do not alter the DAPI
+        # if c=='DAPI':
+        #   pass
+        # else:
+        #   thr_mask = img_raw<thr
+        #   img_raw[thr_mask] = 0
+        #   img_raw[~thr_mask] = img_raw[~thr_mask]-thr
 
         nuclei_mask = h5f['meta/nuclear_masks'][i,...]
-        img_info = image_stats(img_raw[nuclei_mask].ravel())
+        img_info, info_labels = image_stats(img_raw[nuclei_mask].ravel())
         nuclei_stats.append(img_info.copy())
 
         membrane_mask = h5f['meta/membrane_masks'][i,...]
-        img_info = image_stats(img_raw[membrane_mask].ravel())
+        img_info, info_labels = image_stats(img_raw[membrane_mask].ravel())
         membrane_stats.append(img_info.copy())
 
         ## Adjust low values and convert to uint8...
@@ -249,7 +252,7 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
     print(f'Channel {c} got {100*(nuclei_stats[:,0]==0).mean():3.3f}% nuclei zeros')
 
     nuclei_stat_dataset = h5f.create_dataset(f'cell_nuclei_stats/{c}', data=nuclei_stats)
-    nuclei_stat_dataset.attrs['label'] = 'mean,std,percent_positive,q01,q10,q25,q50,q75,q90,q95,q99'
+    nuclei_stat_dataset.attrs['label'] = info_labels#'mean,std,percent_positive,q01,q10,q25,q50,q75,q90,q95,q99'
     nuclei_stat_dataset.attrs['mean'] = np.mean(nuclei_stats, axis=0)
     nuclei_stat_dataset.attrs['std'] = np.std(nuclei_stats, axis=0)
 
@@ -363,18 +366,19 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
     else:
       N, bins = np.histogram(page.ravel(), 256)
 
-    npix = np.cumsum(N)
-    target = np.prod(page.shape)/10
-    bin_index = np.argwhere(npix > target)[0,0]
-    thr = int(bins[bin_index+1])
-    thr = max(min_thresh, thr)
+    # npix = np.cumsum(N)
+    # target = np.prod(page.shape)/10
+    # bin_index = np.argwhere(npix > target)[0,0]
+    # thr = int(bins[bin_index+1])
+    # thr = max(min_thresh, thr)
+    thr = 0
     d.attrs['threshold'] = thr
 
-    if 'DAPI' in c:
-      print('Skipping DAPI channel thresholding')
-      pass
-    else:
-      print(f'Channel {c} subtracting constant {thr}')
+    # if 'DAPI' in c:
+    #   print('Skipping DAPI channel thresholding')
+    #   pass
+    # else:
+    #   print(f'Channel {c} subtracting constant {thr}')
     
     i = 0
     channel_stats = []
@@ -386,15 +390,15 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
         bbox = [x, x+size, y, y+size]
         raw_img = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
 
-        if 'DAPI' in c:
-          pass
-        else:
-          thr_mask = raw_img < thr
-          raw_img[thr_mask] = 0
-          raw_img[~thr_mask] = raw_img[~thr_mask] - thr
+        # if 'DAPI' in c:
+        #   pass
+        # else:
+        #   thr_mask = raw_img < thr
+        #   raw_img[thr_mask] = 0
+        #   raw_img[~thr_mask] = raw_img[~thr_mask] - thr
 
         # img_avg = np.mean(raw_img)
-        img_info = image_stats(raw_img.ravel())
+        img_info, info_labels = image_stats(raw_img.ravel())
         channel_stats.append(img_info.copy())
 
         # raw_img[raw_img<thr] = 0
@@ -409,7 +413,7 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
 
     channel_stats = np.stack(channel_stats, axis=0).astype(np.float32)
     stats_dataset = h5f.create_dataset(f'tile_stats/{c}', data=channel_stats)
-    stats_dataset.attrs['label'] = 'mean,std,percent_positive,q01,q10,q25,q50,q75,q90,q95,q99'
+    stats_dataset.attrs['label'] = info_labels #'mean,std,percent_positive,q01,q10,q25,q50,q75,q90,q95,q99'
     stats_dataset.attrs['mean'] = np.mean(channel_stats)
     stats_dataset.attrs['std'] = np.std(channel_stats)
 
