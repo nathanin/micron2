@@ -6,6 +6,7 @@ import tensorflow as tf
 import tqdm.auto as tqdm
 
 from tensorflow.keras.callbacks import Callback
+import gc
 
 from tensorflow.keras.layers import (Dense, 
   Conv2D, Dropout, BatchNormalization, 
@@ -23,17 +24,25 @@ from tensorflow.keras.layers.experimental.preprocessing import (
 )
 
 # https://github.com/PaperCodeReview/MoCo-TF/blob/master/callback.py
+import sys
+import gc
 class UpdateQueue(Callback):
-  def __init__(self, max_queue_len):
+  def __init__(self, momentum, max_queue_len):
     super(UpdateQueue, self).__init__()
     self.max_queue_len = max_queue_len
+    self.momentum = momentum
 
   def on_batch_end(self, batch, logs=None):
+    for mv, kv in zip(self.model.encode_g.trainable_variables, self.model.encode_k.trainable_variables):
+      tf.compat.v1.assign(kv, self.momentum * kv + (1-self.momentum) * mv )
+
     key = logs.pop('key')
     # self.model.queue = tf.concat([tf.transpose(key), self.model.queue], axis=-1)
     self.model.Q = tf.concat([self.model.Q, key], axis=0)
     self.model.Q = self.model.Q[:self.max_queue_len, :]
-
+    tf.keras.backend.clear_session()
+    # del(key)
+    # gc.collect()
 
 
 def _get_encoder(encoder_type, input_shape):
@@ -164,6 +173,7 @@ class MoCo(tf.keras.Model):
     loss = tf.reduce_mean(loss, name='xentropy-loss')
     return loss
   
+
   def train_step(self, batch):
     key_feat = self.encode_k(batch)
     key_feat = tf.math.l2_normalize(key_feat, axis=1)
@@ -176,8 +186,9 @@ class MoCo(tf.keras.Model):
     variables = self.encode_g.trainable_variables
     grads = tape.gradient(loss, variables)
     self.optimizer.apply_gradients(zip(grads, variables))
+    gc.collect()
 
-    self.update_key_model()
+    # self.update_key_model()
     # for mv, kv in zip(self.encode_g.trainable_variables, self.encode_k.trainable_variables):
     #   tf.compat.v1.assign(kv, self.momentum * kv + (1-self.momentum) * mv )
 
@@ -186,6 +197,6 @@ class MoCo(tf.keras.Model):
     # q = self.Q[~i]
     # self.Q = tf.concat([q, key_feat], axis=0, name='update_Q')
 
-    results = {m.name: m.result() for m in self.metrics}
-    results.update({'key': key_feat, 'loss': loss})
+    # results = {m.name: m.result() for m in self.metrics}
+    results = {'key': key_feat, 'loss': loss}
     return results

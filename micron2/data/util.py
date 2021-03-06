@@ -5,6 +5,7 @@ import os
 
 import random
 
+import tqdm.auto as tqdm
 
 """ Data/dataset structures and methods for working with them 
 
@@ -128,9 +129,11 @@ def _merge_image_datasets_v2(h5fout, h5fs, dataset, channel, size, shuffle=True,
       offset += size
 
   if shuffle:
+    print('Shuffling')
     random.seed(seed)
     random.shuffle(d)
 
+  print('Calculating attributes')
   d.attrs['max'] = np.max(d)
   d.attrs['mean'] = np.mean(d)
   d.attrs['std'] = np.std(d)
@@ -147,6 +150,11 @@ def _merge_image_datasets(h5fout, h5fs, dataset, channel, size, perm=None):
   Returns:
     Nothing
   """
+  ds = f'{dataset}/{channel}'
+  if ds in h5fout.keys():
+    print(f'Found dataset {ds}')
+    return
+
   total_size = 0
   has_dataset = []
   for h5f in h5fs:
@@ -213,6 +221,7 @@ def _merge_value_datasets_v2(h5fout, h5fs, dataset, stats, shuffle=True, seed=99
         d.attr[a] = f[dataset].attr[a]
   
   if shuffle:
+    print('Shuffling')
     random.seed(seed)
     random.shuffle(d)
 
@@ -223,6 +232,11 @@ def _merge_value_datasets_v2(h5fout, h5fs, dataset, stats, shuffle=True, seed=99
 
 def _merge_value_datasets(h5fout, h5fs, dataset, stats, perm=None, transfer_attr=None):
   """ Merge scalar value datasets """
+
+  if dataset in h5fout.keys():
+    print(f'Found dataset {dataset}')
+    return
+
   values = []
   for h5f in h5fs:
     with h5py.File(h5f,'r') as f:
@@ -237,7 +251,7 @@ def _merge_value_datasets(h5fout, h5fs, dataset, stats, perm=None, transfer_attr
   if (transfer_attr is not None) and isinstance(transfer_attr, list):
     for a in transfer_attr:
       with h5py.File(h5fs[0],'r') as f:
-        d.attr[a] = f[dataset].attr[a]
+        d.attrs[a] = f[dataset].attrs[a]
 
   if stats:
     d.attrs['mean'] = np.mean(values)
@@ -261,6 +275,10 @@ def _merge_coordinates_v2(h5fout, h5fs, dataset, shuffle=True, seed=999):
 
 
 def _merge_coordinates(h5fout, h5fs, dataset, perm=None):
+  if dataset in h5fout.keys():
+    print(f'Found dataset {dataset}')
+    return
+
   coords = []
   for h5f in h5fs:
     with h5py.File(h5f, 'r') as f:
@@ -277,6 +295,7 @@ def _merge_coordinates(h5fout, h5fs, dataset, perm=None):
 def _make_source_dataset_v2(h5fout, h5fs, samples, size_ref_dataset, ds_name, 
                             shuffle=True, seed=999):
   """ Make a string dataset that lists the source sample for each cell/image """
+  print('Make source dataset')
   values = []
   for h5f, name in zip(h5fs, samples):
     with h5py.File(h5f,'r') as f:
@@ -284,14 +303,21 @@ def _make_source_dataset_v2(h5fout, h5fs, samples, size_ref_dataset, ds_name,
     values += [name]*size
 
   values = np.array(values, dtype='S')
-  values = values[perm]
+  # values = values[perm]
   d = h5fout.create_dataset(f'meta/{ds_name}', data=values)
   if shuffle:
+    print('Shuffing...')
     random.seed(seed)
     random.shuffle(d)
 
+
 def _make_source_dataset(h5fout, h5fs, samples, size_ref_dataset, ds_name, seed=999):
   """ Make a string dataset that lists the source sample for each cell/image """
+  ds = f'meta/{ds_name}'
+  if ds in h5fout.keys():
+    print(f'Found dataset {ds}')
+    return
+
   values = []
   for h5f, name in zip(h5fs, samples):
     with h5py.File(h5f,'r') as f:
@@ -306,21 +332,82 @@ def _make_source_dataset(h5fout, h5fs, samples, size_ref_dataset, ds_name, seed=
   _ = h5fout.create_dataset(f'meta/{ds_name}_perm', data=perm)
 
 
-def _make_source_dataset(h5fout, h5fs, samples, size_ref_dataset, ds_name, seed=999):
-  """ Make a string dataset that lists the source sample for each cell/image """
-  values = []
-  for h5f, name in zip(h5fs, samples):
-    with h5py.File(h5f,'r') as f:
-      size = f[size_ref_dataset].shape[0]
-    values += [name]*size
-
-  np.random.seed(seed)
-  perm = np.random.choice(len(values), len(values), replace=False)
-  values = np.array(values, dtype='S')
-  values = values[perm]
-  _ = h5fout.create_dataset(f'meta/{ds_name}', data=values)
-  _ = h5fout.create_dataset(f'meta/{ds_name}_perm', data=perm)
-
+def shift_coordinates_v2(labels, coords_in, sample_layout):
+  # rows and columns are flipped again
+  
+  nr,nc = sample_layout.shape
+  print('layout', nr,nc)
+  
+  coords = coords_in.copy()
+  # coords = adata.obsm['coordinates'].copy()
+  # coords[:,1] = -coords[:,1]
+  #coords_tmp = coords.copy()
+  
+  row_shift_grid = np.zeros_like(sample_layout, dtype=np.int)
+  col_shift_grid = np.zeros_like(sample_layout, dtype=np.int)
+      
+  # Cycle through once and find the shifts
+  print('ranges', nr, nc)
+  for r2 in range(nr):
+    print('row', r2)
+    if r2>0:
+      ref_row = r2-1 if r2>0 else r2
+      print('\treference row:', ref_row)
+      row_shift = current_row_max
+      print('\trow shift:', row_shift)
+    else: 
+      row_shift = 0
+    
+    current_row_max = 0
+    for c2 in range(nc):
+      print('\tcolumn', c2)
+      if r2==0 and c2==0: continue
+      
+      print('\t\tlocation', r2, c2)
+      target_slide = sample_layout[r2,c2]
+      if target_slide == 'pass':
+        continue
+      if target_slide is None:
+        continue
+      print('\t\ttarget slide:', target_slide)
+      target_idx = labels==target_slide
+      target_coords = coords[target_idx].copy()
+      print('\t\tstart:', max(target_coords[:,0]), max(target_coords[:,1]))
+      dx = max(target_coords[:,0])-min(target_coords[:,0])
+      dy = max(target_coords[:,1])-min(target_coords[:,1])
+      print('\t\tdimensions:', dx, dy)
+      
+      row_shift_grid[r2,c2] = dy
+      col_shift_grid[r2,c2] = dx
+          
+  row_shift_vect = np.max(row_shift_grid, axis=1)
+  col_shift_vect = np.max(col_shift_grid, axis=0)
+  for r in range(nr):
+    print('row', r)
+    rshift = 0 if r == 0 else np.sum(row_shift_vect[:r])
+    for c in range(nc):
+      print('\tcolumn', c)
+      cshift = 0 if c == 0 else np.sum(col_shift_vect[:c])
+      if r == 0 and c == 0: continue
+      print('\t\tlocation', r, c)
+      target_slide = sample_layout[r,c]
+      if target_slide == 'pass':
+        continue
+      if target_slide is None:
+        continue
+      print('\t\ttarget slide:', target_slide)
+      print(f'\t\tShifting by: rshift(1):{rshift}\tcshift(0):{cshift}')
+      target_idx = labels==target_slide
+      target_coords = coords[target_idx].copy()
+      target_coords[:,0] -= min(target_coords[:,0])
+      target_coords[:,1] -= min(target_coords[:,1])
+      target_coords[:,0] += cshift
+      target_coords[:,1] += rshift
+      coords[target_idx] = target_coords
+          
+  # Flip dim1 (vertical dimension)
+  coords[:,1] = -coords[:,1]
+  return coords
 
 
 def shift_coordinates(labels, coords, sample_layout):
@@ -377,8 +464,8 @@ def shift_coordinates(labels, coords, sample_layout):
   return coords_out
 
 
-def hdf5_concat_v2(h5fs, h5out, channels='all', sample_layout=None, 
-                  shuffle=False, seed=999):
+def hdf5_concat_v2(h5fs, h5out, channels=None, sample_layout=None, 
+                   shuffle=False, seed=999):
   """ Concatenate several datasets
   We want to shuffle, without holding all the data in memory at once.
   """
@@ -394,7 +481,7 @@ def hdf5_concat_v2(h5fs, h5out, channels='all', sample_layout=None,
   samples = [fx(x) for x in h5fs]
   print('Merging: ', samples)
 
-  with h5py.File(h5out, 'w') as h5fout:
+  with h5py.File(h5out, 'a') as h5fout:
     _make_source_dataset_v2(h5fout, h5fs, samples, f'cells/{channels[0]}', 'cell_samples',
                             shuffle=shuffle, seed=seed)
     _make_source_dataset_v2(h5fout, h5fs, samples, f'images/{channels[0]}', 'image_samples',
@@ -433,12 +520,12 @@ def hdf5_concat_v2(h5fs, h5out, channels='all', sample_layout=None,
     # Apply coordinate shifting for convenient plotting later
     cell_labels = np.array([x.decode('utf-8') for x in h5fout['meta/cell_samples'][:]])
     cell_coords = h5fout['meta/cell_coordinates'][:]
-    cell_shifted_coords = shift_coordinates(cell_labels, cell_coords, sample_layout)
+    cell_shifted_coords = shift_coordinates_v2(cell_labels, cell_coords, sample_layout)
     _ = h5fout.create_dataset('meta/cell_coordinates_shift', data=cell_shifted_coords)
 
     image_labels = np.array([x.decode('utf-8') for x in h5fout['meta/image_samples'][:]])
     image_coords = h5fout['meta/tile_coordinates'][:]
-    image_shifted_coords = shift_coordinates(image_labels, image_coords, sample_layout)
+    image_shifted_coords = shift_coordinates_v2(image_labels, image_coords, sample_layout)
     _ = h5fout.create_dataset('meta/tile_coordinates_shift', data=image_shifted_coords)
 
     h5fout.flush()
@@ -496,7 +583,8 @@ def hdf5_concat(h5fs, h5out, channels='all', sample_layout=None, dry_run=False):
   samples = [fx(x) for x in h5fs]
   print('Merging: ', samples)
 
-  with h5py.File(h5out, 'w') as h5fout:
+  print('Making source datasets')
+  with h5py.File(h5out, 'a') as h5fout:
     _make_source_dataset(h5fout, h5fs, samples, f'cells/{channels[0]}', 'cell_samples')
     _make_source_dataset(h5fout, h5fs, samples, f'images/{channels[0]}', 'image_samples')
 
@@ -515,7 +603,7 @@ def hdf5_concat(h5fs, h5out, channels='all', sample_layout=None, dry_run=False):
     for ch in channels:
       _merge_value_datasets(h5fout, h5fs, f'cell_membrane_stats/{ch}', stats=True, perm=cell_perm, transfer_attr=['label'])
       _merge_value_datasets(h5fout, h5fs, f'cell_nuclei_stats/{ch}', stats=True, perm=cell_perm, transfer_attr=['label'])
-      _merge_value_datasets(h5fout, h5fs, f'tile_stats/{ch}', stats=True, perm=cell_perm, transfer_attr=['label'])
+      _merge_value_datasets(h5fout, h5fs, f'tile_stats/{ch}', stats=True, perm=image_perm, transfer_attr=['label'])
       h5fout.flush()
 
     # TODO what? these are missing? 
@@ -536,12 +624,12 @@ def hdf5_concat(h5fs, h5out, channels='all', sample_layout=None, dry_run=False):
     # Apply coordinate shifting for convenient plotting later
     cell_labels = np.array([x.decode('utf-8') for x in h5fout['meta/cell_samples'][:]])
     cell_coords = h5fout['meta/cell_coordinates'][:]
-    cell_shifted_coords = shift_coordinates(cell_labels, cell_coords, sample_layout)
+    cell_shifted_coords = shift_coordinates_v2(cell_labels, cell_coords, sample_layout)
     _ = h5fout.create_dataset('meta/cell_coordinates_shift', data=cell_shifted_coords)
 
     image_labels = np.array([x.decode('utf-8') for x in h5fout['meta/image_samples'][:]])
     image_coords = h5fout['meta/tile_coordinates'][:]
-    image_shifted_coords = shift_coordinates(image_labels, image_coords, sample_layout)
+    image_shifted_coords = shift_coordinates_v2(image_labels, image_coords, sample_layout)
     _ = h5fout.create_dataset('meta/tile_coordinates_shift', data=image_shifted_coords)
 
     h5fout.flush()

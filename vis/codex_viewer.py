@@ -44,7 +44,10 @@ TOOLTIPS=[
     # ("Annotation", "@annotation"),
     # ("Training", "@training"),
     ## We want to add columns dynamically, not have dummy columns with 0's at first.
-    ("celltype_rescued", "@celltype_rescued"),
+    ("celltype_gating", "@celltype_gating"),
+    ("subtype_tcells", "@subtype_tcells"),
+    ("cell_gates", "@cell_gates"),
+    ("PanCytoK_membrane_mean", "@PanCytoK_membrane_mean"),
     # ("subtype", "@subtype"),
     # ("predicted_proba", "@predicted_proba"),
     # ("training_labels", "@training_labels"),
@@ -77,7 +80,7 @@ class ScatterImagePane:
     self.scatter_source = ColumnDataSource(
       data=dict(
           # x, y, s, index, and color are always here
-          x=[], y=[], s=[], index=[], color=[],
+          x=[], y=[], s=[], index=[], color=[], alpha=[],
           ## these need to get added in later, at the users discretion
           annotation=[], training=[], predict_prob=[], 
         )
@@ -95,7 +98,10 @@ class ScatterImagePane:
       )
 
     self.scatter = self.p.scatter(x="x", y="y", source=self.scatter_source, 
-                          radius='s', color="color", line_color=None)
+        radius="s", color="color", line_color=None, 
+        fill_alpha="alpha", 
+        # line_alpha="alpha"
+        )
     self.hover_tool.renderers = [self.scatter]
     self.img_plot = self.p.image_rgba(image='value', source=self.image_source,
                     x='x0',y='y0',dw='dw',dh='dh')
@@ -407,17 +413,20 @@ class CodexViewer:
     colors = np.array(self.shared_var['color'], dtype=object)
     colors[~self.shared_var['cluster_selection']] = self.shared_var['background_color']
     sizes = np.zeros_like(colors, dtype=np.uint8)+self.scatter_widgets.dot_size.value
+    alpha = np.ones_like(sizes)
+    alpha[~self.shared_var['highlight_cells']] = 0
 
     self.scatter_image.p.title.text = f"Highlighting {n_hl} cells"
     data =dict(
       x=self.shared_var['adata_data']['coordinates_1'],
       y=self.shared_var['adata_data']['coordinates_2']-self.shared_var['y_shift'],
       s=sizes,
+      alpha=alpha,
       index=self.shared_var['adata_data']['index_num'],
       color=colors,
     )
     ## Again, here we want to add these dynamically when requested, not using dummy values to pad missing
-    for col in ['celltype_rescued']:
+    for col in ['celltype_gating', 'subtype_tcells', 'cell_gates', 'PanCytoK_membrane_mean']:
       if col in self.shared_var['adata_data'].columns:
         self.logger.info(f'Setting values for hover tool field: {col}')
         data[col] = self.shared_var['adata_data'][col]
