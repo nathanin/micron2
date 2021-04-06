@@ -94,6 +94,7 @@ class Encoder(tf.keras.Model):
     x = self.flat(x)
     x = self.dense_1(x)
     x = self.dense_2(x)
+    x = tf.math.l2_normalize(x, axis=1)
     return x
 
 
@@ -176,11 +177,11 @@ class MoCo(tf.keras.Model):
 
   def train_step(self, batch):
     key_feat = self.encode_k(batch)
-    key_feat = tf.math.l2_normalize(key_feat, axis=1)
+    # key_feat = tf.math.l2_normalize(key_feat, axis=1)
 
     with tf.GradientTape() as tape:
       q = self.encode_g(batch)
-      q = tf.math.l2_normalize(q, axis=1)
+      # q = tf.math.l2_normalize(q, axis=1)
       loss = self.moco_loss(q, tf.stop_gradient(key_feat))#, batch_size=batch.shape[0])
 
     variables = self.encode_g.trainable_variables

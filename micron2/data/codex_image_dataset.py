@@ -22,7 +22,8 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
                     recover_tile_nuclei=True,
                     keep_open=False,
                     as_sparse=True,
-                    features_dtype=np.uint16,
+                    features_dtype=np.float32,
+                    scaler=None, 
                     obsm=None):
   """
   Load a codex image dataset into an AnnData object
@@ -98,6 +99,8 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
   vals = h5f[f'{featurekey}/{channel_names[0]}'][:]
   for i, channel in enumerate(channel_names):
     vals = h5f[f'{featurekey}/{channel}'][:] # N x 11
+    if scaler is not None:
+      vals = scaler.fit_transform(np.log10(1 + vals))
     # features[:, i] = vals
     features.append(vals.copy())
     feature_names += [f'{channel}_nuclei_{feature}' for feature in base_feature_names]
@@ -112,6 +115,8 @@ def load_as_anndata(h5data, obs_names='meta/Cell_IDs',
     vals = h5f[f'{membrane_featurekey}/{channel_names[0]}'][:]
     for i, channel in enumerate(channel_names):
       vals = h5f[f'{membrane_featurekey}/{channel}'][:]
+      if scaler is not None:
+        vals = scaler.fit_transform(np.log10(1 + vals))
       # membrane_features[:, i] = vals
       membrane_features.append(vals.copy())
       membrane_feature_names += [f'{channel}_membrane_{feature}' for feature in base_feature_names]

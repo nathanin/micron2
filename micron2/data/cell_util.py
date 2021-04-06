@@ -11,14 +11,15 @@ kernel = np.ones((3,3))
   # x = h5f['cells'][channel][i,...]
   # m = h5f['meta']['nuclear_masks'][i,...]
 
-def staining_border_nonzero(x, m, kernel=kernel):
+def staining_border_nonzero(x, m, kernel=kernel, threshold=20):
   """ Approximate ring coverage with the percent of non-zero border pixels """
-  if np.sum(x) == 0:
+  xthr = x>threshold
+  if np.sum(xthr) == 0:
     return 0.
-  md = cv2.dilate(m.astype(np.uint8),kernel,2)
-  me = cv2.erode(m.astype(np.uint8),kernel,1)
-  border_signal=x[(md-me)>0]
-  return np.sum(border_signal > 0)/len(border_signal)
+  md = cv2.dilate(m.astype(np.uint8),kernel,2) #dilate
+  me = cv2.erode(m.astype(np.uint8),kernel,2) #also erode
+  border_signal=xthr[(md-me)>0]
+  return np.sum(border_signal)/len(border_signal)
 
 
 def staining_rings(h5path, ring_channels, obs_names):

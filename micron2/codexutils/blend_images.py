@@ -38,8 +38,14 @@ def get_images(sources, bbox, verbose=False):
   for s in sources:
     with pytiff.Tiff(s, "r") as f:
       if verbose:
-        print(f'loading {bbox[0]} : {bbox[1]} and {bbox[2]} : {bbox[3]}')
-      img_raw = f.pages[0][bbox[0]:bbox[1], bbox[2]:bbox[3]]
+        print(f'loading {bbox[0]} : {bbox[1]} and {bbox[2]} : {bbox[3]} from {s}')
+      x1=bbox[0]
+      x2=min(bbox[1], f.pages[0].shape[0])
+      y1=bbox[2]
+      y2=min(bbox[3], f.pages[0].shape[1])
+      img_raw = f.pages[0][x1:x2, y1:y2]
+      if verbose:
+        print(f'loaded image with mean: {np.mean(img_raw)} ({img_raw.dtype})')
     images.append(img_raw)
 
   return np.dstack(images)
@@ -67,7 +73,7 @@ def load_nuclei_mask(nuclei_path, bbox):
 
 
 def blend_images(images, saturation_vals=None, colors=None, 
-                 nuclei=None, nuclei_color=None):
+                 nuclei=None, nuclei_color=None, verbose=False):
   """
   Color blend multiple intensity images into a single RGB image
 
@@ -90,9 +96,12 @@ def blend_images(images, saturation_vals=None, colors=None,
       l = int(h/256)
       saturation_vals.append((l, h))
 
+  if verbose:
+    for sv in saturation_vals:
+      print(f'Saturation: {sv}')
+
   if colors is None:
     colors = (np.array(sns.color_palette(palette='tab20', n_colors=nc))*255).astype(np.uint8)
-    # print()
 
   h, w = images.shape[:2]
   blended = np.zeros((h,w), dtype=np.uint32)

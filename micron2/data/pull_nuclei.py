@@ -129,7 +129,7 @@ def image_stats(pixels):
   qs = np.quantile(pixels, [0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99])
   pix_log = np.log1p(pixels)
   npix = np.prod(pixels.shape)
-  c, b = np.histogram(pix_log, bins=8)
+  c, _ = np.histogram(pix_log, bins=8)
   c = c / npix
 
   info = np.array([ mean, sd, pct] + list(qs) + list(c))
@@ -213,6 +213,7 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
     # thr = int(bins[bin_index+1])
     # thr = max(thr, min_thresh)
     thr = 0
+    high_sat = np.quantile(page, 0.999)
     d.attrs['threshold'] = thr
 
     i = 0
@@ -240,7 +241,8 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
         membrane_stats.append(img_info.copy())
 
         ## Adjust low values and convert to uint8...
-        img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
+        img = np.ceil(255 * (img_raw / high_sat)).astype(np.uint8)
+        # img = img_raw
 
         if scale_factor != 1:
           img = cv2.resize(img, dsize=(write_size, write_size))

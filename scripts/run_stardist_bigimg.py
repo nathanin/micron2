@@ -32,7 +32,7 @@ def get_input_output(args):
     input_path = args.input
   else:
     full_region = f'{args.sample_id}_reg{args.region_num}'
-    input_path = f'{args.data_home}/{full_region}/images/{full_region}_1_DAPI-011_1.tif'
+    input_path = f'{args.data_home}/{full_region}/images/{full_region}_5_DAPI1_5.tif'
   assert os.path.exists(input_path), f"Input {input_path} does not exist"
 
   if args.output is not None:
@@ -129,7 +129,7 @@ def main(args):
 
   axes = 'YXC' if args.HandE else 'YX'
   n_tiles = (4,4,1) if args.HandE else (4,4)
-  labels, _ = model.predict_instances_big(img, axes=axes, block_size=2048, min_overlap=128, n_tiles=n_tiles)
+  labels, _ = model.predict_instances_big(img, axes=axes, block_size=512, min_overlap=128, n_tiles=n_tiles)
   logger.info(f'StarDist2D returned: {labels.shape}, {labels.max()} instances {labels.dtype}')
 
   logger.info(f'Converting int32 to 3-channel uint8')
@@ -188,7 +188,7 @@ if __name__ == '__main__':
   parser.add_argument('--unsharp_mask_amount', default=1, type=float,
                       help = 'amount parameter for unsharp mask filter')
 
-  parser.add_argument('--median_filter_selem_size', default=5, 
+  parser.add_argument('--median_filter_selem_size', default=5, type=int,
                       help = 'disk structuring element size for median filtering')
 
   parser.add_argument('--debugging', action='store_true', 

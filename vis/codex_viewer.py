@@ -43,15 +43,10 @@ Make a little class for each 'pane' that handles:
 TOOLTIPS=[
     # ("Annotation", "@annotation"),
     # ("Training", "@training"),
+
     ## We want to add columns dynamically, not have dummy columns with 0's at first.
-    ("celltype_gating", "@celltype_gating"),
-    ("subtype_tcells", "@subtype_tcells"),
-    ("cell_gates", "@cell_gates"),
-    ("PanCytoK_membrane_mean", "@PanCytoK_membrane_mean"),
-    # ("subtype", "@subtype"),
-    # ("predicted_proba", "@predicted_proba"),
-    # ("training_labels", "@training_labels"),
-    # ("immune_clusters", "@immune_clusters"),
+    ("niche_labels", "@niche_labels"),
+    ("subtype_rescued", "@subtype_rescued"),
     ("Index", "@index"),
     ("x", "@x"),
     ("y", "@y"),
@@ -181,7 +176,7 @@ class ImageColorSettings:
 
     # These don't get handlers
     self._channel_color_pickers = dict(
-      nuclei = ColorPicker(width=50, color='#f2e70a', css_classes=["my-widgets"])
+      nuclei = ColorPicker(width=50, color='#ad9703', css_classes=["my-widgets"])
     )
 
     self._channel_low_thresholds = dict(
@@ -426,7 +421,7 @@ class CodexViewer:
       color=colors,
     )
     ## Again, here we want to add these dynamically when requested, not using dummy values to pad missing
-    for col in ['celltype_gating', 'subtype_tcells', 'cell_gates', 'PanCytoK_membrane_mean']:
+    for col in ['niche_labels', 'subtype_rescued']:
       if col in self.shared_var['adata_data'].columns:
         self.logger.info(f'Setting values for hover tool field: {col}')
         data[col] = self.shared_var['adata_data'][col]

@@ -15,11 +15,11 @@ from micron2.spatial import get_neighbors, pull_neighbors
 
 def get_channel_image_path(data_dir, channel):
   """ Search for an image corresponding to each channel """
-  image_paths = glob.glob(f'{data_dir}/images/*.tif')
+  image_paths = sorted(glob.glob(f'{data_dir}/images/*.tif'))
   # TODO Fix handling DAPI
   for p in image_paths:
     if channel == 'DAPI':
-      srch = f'_{channel}-011_'
+      srch = f'_{channel}'
     else:
       srch = f'_{channel}_'
     if srch in p:
@@ -69,8 +69,19 @@ def set_active_slide(adata_path, shared_variables, logger):
   else:
     data[ad.var_names.tolist()] = pd.DataFrame(ad.X.copy(), index=ad.obs_names, columns=ad.var_names)
   data['index_num'] = np.arange(data.shape[0])
-  data['coordinates_1'] = ad.obsm['coordinates'][:,0].copy()
-  data['coordinates_2'] = ad.obsm['coordinates'][:,1].copy()
+
+  # coords are stored with Y inverted for plotting with matplotlib.. flip it back for pulling from the images.
+  # if 'coordinates_shift' in ad.obsm.keys():
+  #   logger.info(f'Using coordinates_shift as scatter coordinates')
+  #   coords = ad.obsm['coordinates_shift']
+  # else:
+  #   logger.info(f'Using coordinates as scatter coordinates')
+  #   coords = ad.obsm['coordinates']
+
+  coords = ad.obsm['coordinates']
+  data['coordinates_1'] = coords[:,0].copy()
+  data['coordinates_2'] = coords[:,1].copy()
+  coords[:,1] = -coords[:,1]
 
   # n_clusters = len(np.unique(ad.obs[annotation_col]))
   # if f'{annotation_col}_colors' in ad.uns.keys():
@@ -84,9 +95,6 @@ def set_active_slide(adata_path, shared_variables, logger):
 
   data['color'] = ['#94b5eb']*ad.shape[0]
 
-  # coords are stored with Y inverted for plotting with matplotlib.. flip it back for pulling from the images.
-  coords = ad.obsm['coordinates']
-  coords[:,1] = -coords[:,1]
 
   ## -------------------------------------------------------------------
   #                      Shared variables
