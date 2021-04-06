@@ -201,6 +201,8 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
     nuclei_stats = []
     membrane_stats = []
 
+    high_sat = np.quantile(page[page>0], 0.9999)
+
     # # Use the FIJI/ImageJ 'Auto' Contrast histogram method to find a low cutoff
     # if tissue_img is not None:
     #   N, bins = np.histogram(page[tissue].ravel(), 256)
@@ -215,6 +217,8 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
     thr = 0
     high_sat = np.quantile(page, 0.999)
     d.attrs['threshold'] = thr
+    d.attrs['saturation'] = high_sat
+    print(f'channel {c} saturation: {high_sat}')
 
     i = 0
     with tqdm(zip(coords.X, coords.Y), total=coords.shape[0], disable=None) as pbar:
@@ -240,9 +244,11 @@ def create_nuclei_dataset(coords, image_paths, h5f, size, min_area, nuclei_img, 
         img_info, info_labels = image_stats(img_raw[membrane_mask].ravel())
         membrane_stats.append(img_info.copy())
 
-        ## Adjust low values and convert to uint8...
-        img = np.ceil(255 * (img_raw / high_sat)).astype(np.uint8)
-        # img = img_raw
+        ## Adjust values and convert to uint8...
+        img = img_raw.copy()
+        img[img>high_sat] = high_sat
+        img = np.ceil(255 * (img / high_sat)).astype(np.uint8)
+        #img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
 
         if scale_factor != 1:
           img = cv2.resize(img, dsize=(write_size, write_size))
@@ -362,6 +368,8 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
     h = pytiff.Tiff(pth)
     page = h.pages[0][:]
 
+    high_sat = np.quantile(page[page>0], 0.9999)
+
     # Use the FIJI/ImageJ 'Auto' Contrast histogram method to find a low cutoff
     if tissue_img is not None:
       N, bins = np.histogram(page[tissue].ravel(), 256)
@@ -375,6 +383,8 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
     # thr = max(min_thresh, thr)
     thr = 0
     d.attrs['threshold'] = thr
+    d.attrs['saturation'] = high_sat
+    print(f'channel {c} saturation: {high_sat}')
 
     # if 'DAPI' in c:
     #   print('Skipping DAPI channel thresholding')
@@ -390,7 +400,7 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
         y, x = coord
         # bbox = [y-sizeh, y+sizeh, x-sizeh, x+sizeh]
         bbox = [x, x+size, y, y+size]
-        raw_img = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
+        img_raw = page[bbox[0]:bbox[1], bbox[2]:bbox[3]]
 
         # if 'DAPI' in c:
         #   pass
@@ -400,11 +410,14 @@ def create_image_dataset(image_paths, h5f, size, channel_names,
         #   raw_img[~thr_mask] = raw_img[~thr_mask] - thr
 
         # img_avg = np.mean(raw_img)
-        img_info, info_labels = image_stats(raw_img.ravel())
+        img_info, info_labels = image_stats(img_raw.ravel())
         channel_stats.append(img_info.copy())
 
         # raw_img[raw_img<thr] = 0
-        img = np.ceil(255 * (raw_img / 2**16)).astype(np.uint8)
+        img = img_raw.copy()
+        img[img>high_sat] = high_sat
+        img = np.ceil(255 * (img / high_sat)).astype(np.uint8)
+        #img = np.ceil(255 * (img_raw / 2**16)).astype(np.uint8)
 
         if scale_factor != 1:
           # img = cv2.resize(img, dsize=(0,0), fx=scale_factor, fy=scale_factor)
