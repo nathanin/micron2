@@ -32,7 +32,7 @@ def get_input_output(args):
     input_path = args.input
   else:
     full_region = f'{args.sample_id}_reg{args.region_num}'
-    input_path = f'{args.data_home}/{full_region}/images/{full_region}_5_DAPI1_5.tif'
+    input_path = f'{args.data_home}/{full_region}/images/{full_region}_1_DAPI1_1.tif'
   assert os.path.exists(input_path), f"Input {input_path} does not exist"
 
   if args.output is not None:

@@ -182,7 +182,7 @@ def celltype_distances(coords, celltypes, query_cell, target_cell, k=10, mode='n
 
 
 def sliding_window_niches(coords, clusters, window=100, overlap=0.25, cell_ids=None,
-                          aggregate='sum'):
+                          aggregate='sum', min_cells=10):
   """
 
   Returns:
@@ -190,6 +190,7 @@ def sliding_window_niches(coords, clusters, window=100, overlap=0.25, cell_ids=N
     phenotype_profiles (float ~ H, W, N_phenotypes): Raw phenotype distributions in each window
     window_id (str ~ H, W) ~ Window ID's in a spatial layout
     cell_window_map (dict) ~ Collections of cell IDs within each window
+    cluster_levels ~ array mapping positions in `phenotype_profiles` (by index) back to values from `clusters` (by value)
   """
   # swap positions - coords[:,0] ~ width
   # but we want c1 to be height
@@ -199,7 +200,7 @@ def sliding_window_niches(coords, clusters, window=100, overlap=0.25, cell_ids=N
   max_c1, max_c2 = np.max(c1), np.max(c2)
   print(coords.shape, len(clusters))
 
-  _, clusters = np.unique(clusters, return_inverse=True)
+  cluster_levels, clusters = np.unique(clusters, return_inverse=True)
   u_clusters = np.unique(clusters)
   w2 = int(window // 2)
   step_size = int(np.floor(window * (1-overlap)))
@@ -218,6 +219,7 @@ def sliding_window_niches(coords, clusters, window=100, overlap=0.25, cell_ids=N
   window_id = np.zeros((len(centers_c1), len(centers_c2)), dtype=object)
   window_id[:] = ''
 
+  print(f'Checking {len(centers_c1)*len(centers_c2)} windows')
   for i, c1_c in enumerate(centers_c1):
     w_dim1 = [c1_c-w2, c1_c+w2]
     w_cells_dim1 = (c1 > w_dim1[0]) & (c1 < w_dim1[1])
@@ -229,7 +231,7 @@ def sliding_window_niches(coords, clusters, window=100, overlap=0.25, cell_ids=N
       w_n_cells = np.sum(w_cells)
       n_cells[i,j] = w_n_cells
 
-      if w_n_cells == 0:
+      if w_n_cells < min_cells:
         continue
       else:
         w_clusters = clusters[w_cells]
@@ -255,7 +257,7 @@ def sliding_window_niches(coords, clusters, window=100, overlap=0.25, cell_ids=N
   # phenotypes_cluster = np.reshape(phenotypes_cluster, phenotype_profiles.shape[:2])
   # print(phenotypes_cluster.shape)
 
-  return phenotype_profiles, window_id, cell_window_map
+  return phenotype_profiles, window_id, cell_window_map, cluster_levels
 
   # plt.figure(figsize=(5,5),dpi=180)
   # ax=plt.gca()

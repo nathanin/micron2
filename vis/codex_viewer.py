@@ -2,6 +2,8 @@ from os.path import dirname, join
 from bokeh.models.tools import HoverTool, PanTool, ResetTool, WheelZoomTool, BoxSelectTool, PolySelectTool
 from cudf.utils.utils import scalar_broadcast_to
 
+import time
+
 import numpy as np
 import scanpy as sc
 import pandas as pd
@@ -26,6 +28,7 @@ from scipy.sparse import issparse
 # from micron2.spatial import pull_neighbors
 from micron2.codexutils import blend_images, load_nuclei_mask
 
+import pickle
 import logging
 from .selection_ops_v2 import update_bbox, maybe_pull
 from .load_data import set_active_slide
@@ -45,8 +48,10 @@ TOOLTIPS=[
     # ("Training", "@training"),
 
     ## We want to add columns dynamically, not have dummy columns with 0's at first.
+    ("celltype", "@celltype"),
+    ("subtype", "@subtype"),
     ("niche_labels", "@niche_labels"),
-    ("subtype_rescued", "@subtype_rescued"),
+    ("state_probs", "@state_probs"),
     ("Index", "@index"),
     ("x", "@x"),
     ("y", "@y"),
@@ -91,6 +96,16 @@ class ScatterImagePane:
           x0= [], y0= []
         )
       )
+    
+    self.region_source = ColumnDataSource(
+      data=dict(
+        xs=[],
+        ys=[],
+        alpha=[],
+        color=[]
+      )
+
+    )
 
     self.scatter = self.p.scatter(x="x", y="y", source=self.scatter_source, 
         radius="s", color="color", line_color=None, 
@@ -102,6 +117,13 @@ class ScatterImagePane:
                     x='x0',y='y0',dw='dw',dh='dh')
     self.img_plot.level = 'underlay'
 
+    self.regions = self.p.multi_polygons(xs="xs", ys="ys", alpha="alpha", 
+        line_color="color", 
+        fill_color=None,
+        line_width=4,
+        source=self.region_source)
+    self.img_plot.level = 'overlay'
+
   def reset(self):
     pass
 
@@ -111,13 +133,17 @@ class ScatterImagePane:
 
 CLUSTER_VIEW_OPTS = [
   'Join focused clusters',
-  'Show neighbors',
+  'Show regions',
   'Hide scatter plot'
 ]
 class ScatterSettings:
   def __init__(self, logger):
     self.logger = logger
     self.cluster_select = CheckboxGroup(active=[], labels=[], 
+                                        margin=(10,10,10,10),
+                                        height=300,
+                                        css_classes=["my-widgets"])
+    self.region_select = CheckboxGroup(active=[], labels=[], 
                                         margin=(10,10,10,10),
                                         css_classes=["my-widgets"])
     self.clear_clusters = Button(label='Clear focused cells', 
@@ -126,16 +152,25 @@ class ScatterSettings:
                                            active=[],
                                            margin=(10,10,10,10),
                                            css_classes=["my-widgets"])
-    self.input_file = TextInput(placeholder='Enter full path to sample h5ad')
+    self.input_file = TextInput(placeholder='Enter h5ad path')
+    self.region_file = TextInput(placeholder='Enter region path')
     self.dot_size = Spinner(low=1, high=30, step=2, value=10, 
                             css_classes=["my-widgets"], name='Dot size', 
                             width=100)
     self.choose_annotation = Select(title="Choose annotation:", 
                                options=[], css_classes=['my-widgets'])
+
+    ## TODO hopefully this can be used for dynamically changing hover info
     self.hover_tooltips = MultiChoice(value=[], options=[], width=200)
+
+    # self.choose_region = Select(title="Choose regions:", 
+    #                            options=[], css_classes=['my-widgets'])
+
+    self.active_regions = []
 
   def set_annotation_mode(self):
     pass
+
 
   @property
   def layout(self):
@@ -147,6 +182,9 @@ class ScatterSettings:
         self.clear_clusters,
         self.choose_annotation,
         self.cluster_select, 
+        # self.choose_region, 
+        self.region_file,
+        self.region_select
       ],
       margin=(10,10,10,10),
       width=150)
@@ -154,7 +192,6 @@ class ScatterSettings:
 
   def reset(self):
     pass
-
 
 
 
@@ -313,13 +350,16 @@ class CodexViewer:
 
   def register_callbacks(self):
     self.scatter_widgets.input_file.on_change('value', self.set_input_file)
+    self.scatter_widgets.region_file.on_change('value', self.set_region_file)
     self.scatter_widgets.cluster_view_opts.on_click(lambda x: self.update_scatter())
     self.scatter_widgets.choose_annotation.on_change('value', self.set_annotation_groups)
     self.scatter_widgets.dot_size.on_change('value', lambda a,o,n: self.update_scatter())
     self.scatter_widgets.cluster_select.on_click(lambda a: self.update_scatter())
+    self.scatter_widgets.region_select.on_click(lambda a: self.draw_region())
     self.scatter_image.scatter.data_source.selected.on_change('indices', self.update_box_selection)
     self.image_colors.update_image.on_click(self.update_image_plot)
-    self.scatter_widgets.hover_tooltips.on_change('value', self.add_hover_data)
+    # self.scatter_widgets.hover_tooltips.on_change('value', self.add_hover_data)
+
 
   def add_hover_data(self, attr, old, new):
     hover_cols = self.scatter_widgets.hover_tooltips.value
@@ -356,13 +396,25 @@ class CodexViewer:
       cluster_colors = self.shared_var['adata'].uns[f'{new}_colors']
       color_map = {k: v for k, v in zip(self.scatter_widgets.u_groups, cluster_colors)}
     else:
-      cluster_colors = sns.color_palette('Set1', n_clusters)
+      cluster_colors = sns.color_palette('tab20', n_clusters)
       cluster_colors = np.concatenate([cluster_colors, np.ones((n_clusters, 1))], axis=1)
       color_map = {k: rgb2hex(v) for k, v in zip(self.scatter_widgets.u_groups, cluster_colors)}
 
     self.shared_var['color'] = [color_map[g] for g in annotation]
     # update scatter
     self.update_scatter()
+
+
+  def set_region_file(self, attr, old, new):
+    self.logger.info(f'Setting region file to: {new}')
+    region_polygons = pickle.load(open(new, 'rb'))
+    self.scatter_widgets.region_select.labels = list(region_polygons.keys())
+    self.scatter_widgets.region_polygons = region_polygons 
+    self.scatter_widgets.region_key_dict = {i: k for i,k in enumerate(list(region_polygons.keys()))}
+    
+    c = [rgb2hex(z) for z in sns.color_palette('tab20', n_colors=len(region_polygons))]
+    self.scatter_widgets.region_colors = {i: k for i,k in enumerate(c)}
+    
 
 
   def set_input_file(self, attr, old, new):
@@ -396,6 +448,53 @@ class CodexViewer:
     # reset __everything__
 
 
+# /storage/codex/preprocessed_data/210129_Breast_Cassette4_reg1/210129_Breast_Cassette4_reg1.h5ad
+# /home/ingn/devel/micron2/projects/pembroRT-immune/alpha-shapes-graphSAGE/h12_RT.pkl
+
+  def draw_region(self):
+    """ Update the scatter plot with regional outlines """
+
+    self.logger.info('Drawing regional annotation')
+
+    active_regions = self.scatter_widgets.region_select.active
+    self.logger.info(f'Drawing regional annotation for regions: {active_regions}')
+
+    # prev_regions = self.scatter_widgets.active_regions
+    # self.logger.info(f'Previously active regions: {self.scatter_widgets.active_regions}')
+
+    # remove previously drawn regions no longer part of the active regions
+
+    # draw new regions
+    xs, ys, colors = [], [], []
+    for reg in active_regions:
+      self.logger.info(f'Drawing region {reg}')
+      polys = self.scatter_widgets.region_polygons[self.scatter_widgets.region_key_dict[reg]]
+      n_polys = len(polys)
+      self.logger.info(f'found {n_polys} polygons')
+      if n_polys == 0:
+        continue
+
+      # now make that crazy nested dictionary.
+      for poly in polys:
+        x =  poly[:,0] - self.shared_var['y_shift']
+        y =  poly[:,1] 
+
+        xs.append( [[list( y )]] )
+        ys.append( [[list( x )]] )
+        colors.append(self.scatter_widgets.region_colors[reg])
+        self.logger.info(f'Added polygon  for region {reg} with {len(x)} vertices')
+
+    self.scatter_image.region_source.data = {
+      'xs': xs,
+      'ys': ys,
+      'alpha': [1]*len(xs),
+      'color': colors
+    }
+
+    self.scatter_widgets.active_regions = active_regions
+
+
+
   def update_scatter(self):
     """ Parse all the applicable requests and update the scatter figure
     """
@@ -421,7 +520,7 @@ class CodexViewer:
       color=colors,
     )
     ## Again, here we want to add these dynamically when requested, not using dummy values to pad missing
-    for col in ['niche_labels', 'subtype_rescued']:
+    for col in ['niche_labels', 'celltype', 'subtype', 'state_probs']:
       if col in self.shared_var['adata_data'].columns:
         self.logger.info(f'Setting values for hover tool field: {col}')
         data[col] = self.shared_var['adata_data'][col]
@@ -434,6 +533,7 @@ class CodexViewer:
       update_bbox(self.shared_var, self.scatter_image.p, self.logger)
     self.reframe=False
 
+    # Allow hiding points
     if 2 in self.scatter_widgets.cluster_view_opts.active:
       self.logger.info('Hiding scatter plot')
       self.scatter_image.img_plot.level = 'overlay'
@@ -441,7 +541,10 @@ class CodexViewer:
       self.logger.info('Showing scatter plot')
       self.scatter_image.img_plot.level = 'underlay'
 
-
+    # Placed after hiding points to allow showing regions
+    if 1 in self.scatter_widgets.cluster_view_opts.active:
+      self.logger.info('Showing region annotation')
+      self.scatter_image.regions.level = 'overlay'
 
 
   def update_box_selection(self, attr, old, new):
@@ -565,12 +668,15 @@ class CodexViewer:
       'y0': [bbox_plot[2]],
       }
 
+
   # https://docs.bokeh.org/en/latest/docs/gallery/color_sliders.html
   def hex_to_dec(self, hex):
     red = ''.join(hex.strip('#')[0:2])
     green = ''.join(hex.strip('#')[2:4])
     blue = ''.join(hex.strip('#')[4:6])
     return (int(red, 16), int(green, 16), int(blue,16), 255)
+
+
 
   @property
   def data_layout(self):

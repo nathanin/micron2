@@ -113,7 +113,7 @@ def set_active_slide(adata_path, shared_variables, logger):
   for k,v in image_sources.items():
     logger.info(f'{k}: {v}')
 
-  channel_colors = np.array(sns.color_palette('Set1', n_colors=len(all_channels)))
+  channel_colors = np.array(sns.color_palette('tab20', n_colors=len(all_channels)))
   channel_colors = np.concatenate([channel_colors, np.ones((len(all_channels), 1))], axis=1)
   channel_colors = {c: rgb2hex(color) for c, color in zip(all_channels, channel_colors)}
 
