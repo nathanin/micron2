@@ -23,6 +23,7 @@ __all__ = [
   'pull_neighbors',
   'categorical_neighbors',
   'sliding_window_niches',
+  'sliding_window_values',
   'k_neighbor_niches',
   'celltype_distances'
 ]
@@ -182,7 +183,7 @@ def celltype_distances(coords, celltypes, query_cell, target_cell, k=10, mode='n
 
 
 def sliding_window_niches(coords, clusters, window=100, overlap=0.25, cell_ids=None,
-                          aggregate='sum', min_cells=10):
+                          aggregate='sum', min_cells=10, verbose=False):
   """
 
   Returns:
@@ -198,7 +199,8 @@ def sliding_window_niches(coords, clusters, window=100, overlap=0.25, cell_ids=N
   c2 = coords[:,0]
 
   max_c1, max_c2 = np.max(c1), np.max(c2)
-  print(coords.shape, len(clusters))
+  if verbose:
+    print(coords.shape, len(clusters))
 
   cluster_levels, clusters = np.unique(clusters, return_inverse=True)
   u_clusters = np.unique(clusters)
@@ -219,7 +221,8 @@ def sliding_window_niches(coords, clusters, window=100, overlap=0.25, cell_ids=N
   window_id = np.zeros((len(centers_c1), len(centers_c2)), dtype=object)
   window_id[:] = ''
 
-  print(f'Checking {len(centers_c1)*len(centers_c2)} windows')
+  if verbose:
+    print(f'Checking {len(centers_c1)*len(centers_c2)} windows')
   for i, c1_c in enumerate(centers_c1):
     w_dim1 = [c1_c-w2, c1_c+w2]
     w_cells_dim1 = (c1 > w_dim1[0]) & (c1 < w_dim1[1])
@@ -250,23 +253,81 @@ def sliding_window_niches(coords, clusters, window=100, overlap=0.25, cell_ids=N
       window_id[i,j] = w_id
       cell_window_map[w_id] = cell_ids[w_cells]
 
-  # phenotypes_flat = np.reshape(phenotype_profiles, (-1, phenotype_profiles.shape[-1]))
-  # phenotypes_cluster = cluster_leiden_cu(phenotypes_flat, resolution=0.6)
-
-  # _ , phenotypes_cluster = np.unique(phenotypes_cluster, return_inverse=True)
-  # phenotypes_cluster = np.reshape(phenotypes_cluster, phenotype_profiles.shape[:2])
-  # print(phenotypes_cluster.shape)
 
   return phenotype_profiles, window_id, cell_window_map, cluster_levels
 
-  # plt.figure(figsize=(5,5),dpi=180)
-  # ax=plt.gca()
-  # m = ax.matshow(phenotypes_cluster, cmap='tab20')
-  # plt.colorbar(m, ax=ax, shrink=0.7)
-  # ax.set_title('Regions clustered by phenotype profiles')
-  # ax.set_xticks([])
-  # ax.set_yticks([])
 
+
+
+def sliding_window_values(coords, values, window=100, overlap=0.25, cell_ids=None,
+                          aggregate='sum', min_cells=10):
+  """
+  Input:
+    coords: (N x 2)
+    value: (N x m)
+
+  Returns:
+    aggregated_values (float ~ H, W, m): aggregated values in each window
+    window_id (str ~ H, W) ~ Window ID's in a spatial layout
+    cell_window_map (dict) ~ Collections of cell IDs within each window
+  """
+  # Coerce values into (N x m) in case a list
+  values = np.array(values)
+  if len(values.shape) == 1:
+    values = np.reshape(values, (-1, 1))
+
+  # swap positions - coords[:,0] ~ width
+  # but we want c1 to be height
+  c1 = coords[:,1]
+  c2 = coords[:,0]
+
+  max_c1, max_c2 = np.max(c1), np.max(c2)
+
+  w2 = int(window // 2)
+  step_size = int(np.floor(window * (1-overlap)))
+
+  if cell_ids is None:
+    cell_ids = np.arange(values.shape[0])
+
+  centers_c1 = np.arange(w2, max_c1-w2, step_size, dtype=int)
+  centers_c2 = np.arange(w2, max_c2-w2, step_size, dtype=int)
+
+  cell_window_map = {}
+
+  n_cells = np.zeros((len(centers_c1), len(centers_c2)))
+  window_values = np.zeros((len(centers_c1), len(centers_c2), values.shape[-1]), dtype='float')
+  window_id = np.zeros((len(centers_c1), len(centers_c2)), dtype=object)
+  window_id[:] = ''
+
+  print(f'Checking {len(centers_c1)*len(centers_c2)} windows')
+  for i, c1_c in enumerate(centers_c1):
+    w_dim1 = [c1_c-w2, c1_c+w2]
+    w_cells_dim1 = (c1 > w_dim1[0]) & (c1 < w_dim1[1])
+    for j, c2_c in enumerate(centers_c2):
+      w_dim2 = [c2_c-w2, c2_c+w2]
+      w_cells_dim2 = (c2 > w_dim2[0]) & (c2 < w_dim2[1])
+      w_cells = w_cells_dim1 & w_cells_dim2
+      
+      w_n_cells = np.sum(w_cells)
+      n_cells[i,j] = w_n_cells
+
+      if w_n_cells < min_cells:
+        continue
+      else:
+        w_values = values[w_cells, :]
+        if aggregate == 'sum':
+          v = w_values.sum(axis=0)
+        elif aggregate == 'mean':
+          v = w_values.mean(axis=0)
+      
+      window_values[i,j,:] = v
+      # phenotypes_pcts[i,j,:] = pfl_pct
+      
+      w_id = f'window_{i}_{j}'
+      window_id[i,j] = w_id
+      cell_window_map[w_id] = cell_ids[w_cells]
+
+  return window_values, window_id, cell_window_map
 
 
 def k_neighbor_niches(coords, clusters, k=10, max_dist=100, u_clusters=None, aggregate='sum',

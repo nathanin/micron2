@@ -14,6 +14,7 @@ micron2.egg-info
 
 *-checkpoint.ipynb
 *.ipynb_checkpoints/
+*.ipynb
 
 notebook_stash/
 *.tar.gz
@@ -21,3 +22,6 @@ notebook_stash/
 *stardist_models/
 
 *.DS_Store
+
+*.csv
+*.gz

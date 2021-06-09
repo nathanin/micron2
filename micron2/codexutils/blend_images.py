@@ -4,6 +4,7 @@ import pytiff
 import cv2
 
 import seaborn as sns
+import functools
 
 
 def estimate_channel_background(source):
@@ -23,6 +24,18 @@ def get_multiple_images(sources, bboxes):
   return regions
 
 
+# maxsize should be small; some images may be large 
+@functools.lru_cache(maxsize=8)
+def _load_image(s, a,b,c,d):
+  with pytiff.Tiff(s, "r") as f:
+    x1=a
+    x2=min(b, f.pages[0].shape[0])
+    y1=c
+    y2=min(d, f.pages[0].shape[1])
+    img_raw = f.pages[0][x1:x2, y1:y2]
+  return img_raw
+
+
 def get_images(sources, bbox, verbose=False):
   """ Get intensity images from the sources 
 
@@ -36,22 +49,19 @@ def get_images(sources, bbox, verbose=False):
 
   images = []
   for s in sources:
-    with pytiff.Tiff(s, "r") as f:
-      if verbose:
-        print(f'loading {bbox[0]} : {bbox[1]} and {bbox[2]} : {bbox[3]} from {s}')
-      x1=bbox[0]
-      x2=min(bbox[1], f.pages[0].shape[0])
-      y1=bbox[2]
-      y2=min(bbox[3], f.pages[0].shape[1])
-      img_raw = f.pages[0][x1:x2, y1:y2]
-      if verbose:
-        print(f'loaded image with mean: {np.mean(img_raw)} ({img_raw.dtype})')
+    if verbose:
+      print(f'loading {bbox[0]} : {bbox[1]} and {bbox[2]} : {bbox[3]} from {s}')
+    img_raw = _load_image(s, *bbox)
+
+    if verbose:
+      print(f'loaded image with mean: {np.mean(img_raw)} ({img_raw.dtype})')
+
     images.append(img_raw)
 
   return np.dstack(images)
 
 
-def load_nuclei_mask(nuclei_path, bbox):
+def load_nuclei_mask(nuclei_path, bbox, dilation=1):
   """ Load nuclei mask and extract the borders
 
   Args:
@@ -67,7 +77,7 @@ def load_nuclei_mask(nuclei_path, bbox):
 
   nuclei = (nuclei > 0).astype(np.uint8)
   kern = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3))
-  dilation = cv2.dilate(nuclei,kern,iterations = 1)
+  dilation = cv2.dilate(nuclei,kern,iterations = dilation)
   nuclei = dilation - nuclei
   return nuclei > 0
 

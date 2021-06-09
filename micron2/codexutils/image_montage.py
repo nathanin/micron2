@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
-from .blend_images import get_images, get_multiple_images, blend_images
+from numpy.lib.npyio import load
+from .blend_images import get_images, get_multiple_images, blend_images, load_nuclei_mask
+
 
 # https://docs.bokeh.org/en/latest/docs/gallery/color_sliders.html
 def hex_to_dec(hex):
@@ -74,11 +76,11 @@ def layout_cells(montage, layer, ncol=3, padding=1, padval=250, snake=True):
 
 
 class ImageMontage:
-  def __init__(self, sources={}, colors={}, saturations={}, channel_groups=[], verbose=False):
+  def __init__(self, sources={}, colors={}, saturations={}, channel_groups=[], dilation=1, verbose=False):
     """
     Args:
       sources (dict): dictionary mapping channel name to image
-      colors (dict): dictionary mappig channel name to color
+      colors (dict): dictionary mapping channel name to color
       saturations (dict): dictionary mapping channel name to tuple (low, high) saturation values
     """
     self.sources = sources
@@ -86,13 +88,40 @@ class ImageMontage:
     self.saturations = saturations
     self.channel_groups = channel_groups
     self.verbose = verbose
+    self.dilation = dilation
+
+
+  def overlay_solid(self, view, bbox, annotation, downsample=None):
+    color = hex_to_dec(self.colors[annotation])
+    a = load_nuclei_mask(self.sources[annotation], bbox, dilation=self.dilation)
+
+    r,g,b = np.split(view, 3, axis=-1)
+    r[a] = color[0]
+    g[a] = color[1]
+    b[a] = color[2]
+    view = np.dstack([r,g,b])
+
+    return view
 
 
   def montage(self, bbox, downsample=None):
     m = []
     for group in self.channel_groups:
+      if 'nuclei' in group:
+        group = [g for g in group if g != 'nuclei']
+        do_nuclei = True
+      else:
+        do_nuclei = False
+      
+      if 'membrane' in group:
+        group = [g for g in group if g != 'membrane']
+        do_membrane = True
+      else:
+        do_membrane = False
+
       if self.verbose:
         print(f'Making group: {group}')
+
       group_sources = [self.sources[ch] for ch in group]
       group_colors = np.stack([hex_to_dec(self.colors[ch]) for ch in group], axis=0)
       group_saturations = [self.saturations[ch] for ch in group]
@@ -106,6 +135,13 @@ class ImageMontage:
       blended = blend_images(images, saturation_vals=group_saturations, colors=group_colors)
       h,w = images.shape[:2]
       view = blended.view(dtype=np.uint8).reshape((h,w,4)).copy()[:,:,:3]
+
+      if do_nuclei:
+        view = self.overlay_solid(view, bbox, 'nuclei', downsample=downsample)
+
+      if do_membrane:
+        view = self.overlay_solid(view, bbox, 'membrane', downsample=downsample)
+
       m.append(view)
     return m
 
