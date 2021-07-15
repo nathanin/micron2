@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from numpy.lib.npyio import load
+# from numpy.lib.npyio import load
 from .blend_images import get_images, get_multiple_images, blend_images, load_nuclei_mask
 
 
@@ -31,6 +31,11 @@ def layout_cells(montage, layer, ncol=3, padding=1, padval=250, snake=True):
   1 2 3 4
   5 6 7 8 
   9
+
+  what is going on with this layer argument?
+  probably leftover from the original weird way i imagined using this function..
+  this argument can be removed.
+  
   """
   n_regions = len(montage[0])
   nrow = int(np.ceil(n_regions/ncol))

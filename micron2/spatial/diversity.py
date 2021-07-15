@@ -51,6 +51,8 @@ def shannon(data, clonality=False):
   runningSum = 0
   
   for i in vals:
+      if i==0:
+          continue
       runningSum += -1*(i * np.log(i))
 
   if clonality:
