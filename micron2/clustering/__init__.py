@@ -4,4 +4,4 @@ from .embedding_simclr import train_AE_simCLR, train_simCLR
 from .embedding_moco import train_moco
 from .utils import *
 
-from .model_moco import MoCo, UpdateQueue
+from .model_moco import MoCo, MoCo_Classifier, Classifier, Encoder, UpdateQueue
