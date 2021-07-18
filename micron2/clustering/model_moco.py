@@ -14,18 +14,20 @@ from tensorflow.keras.layers import (Dense,
   Flatten
 )
 
-from tensorflow.keras.layers.experimental.preprocessing import (
-  RandomFlip,
-  RandomRotation,
-  RandomTranslation,
-  RandomCrop,
-  RandomContrast,
-  # Rescaling
-)
+# from tensorflow.keras.layers.experimental.preprocessing import (
+#   RandomFlip,
+#   RandomRotation,
+#   RandomTranslation,
+#   RandomCrop,
+#   RandomContrast,
+#   # Rescaling
+# )
 
 # https://github.com/PaperCodeReview/MoCo-TF/blob/master/callback.py
 import sys
 import gc
+
+
 class UpdateQueue(Callback):
   def __init__(self, momentum, max_queue_len):
     super(UpdateQueue, self).__init__()
@@ -58,19 +60,32 @@ def _get_encoder(encoder_type, input_shape):
     return tf.keras.applications.ResNet50V2(**app_args)
 
 
+class Classifier(tf.keras.Model):
+  def __init__(self, encoder, n_classes=None, mlp_dim=128):
+    """ Encode an image into a reduced 1D representation """
+    super(Classifier, self).__init__()
+    assert n_classes is not None
+    self.encoder = encoder
+    self.n_classes = n_classes
+    self.mlp_dim = mlp_dim
+
+    self.mlp_hid = Dense(self.mlp_dim, activation='relu')
+    self.mlp_out = Dense(self.n_classes, activation='softmax')
+
+  def call(self, x, training=True):
+    z = self.encoder(x, training=training)
+    z = self.mlp_hid(z)
+    y = self.mlp_out(z)
+    return y
+
 
 class Encoder(tf.keras.Model):
   def __init__(self, data_shape=[64, 64, 3], z_dim=256, 
-               crop_size=48,
                encoder_type='ResNet50V2'):
     """ Encode an image into a reduced 1D representation """
     super(Encoder, self).__init__()
 
     self.x_size = data_shape[0]
-
-    # self.flip = RandomFlip()
-    # self.rotate = RandomRotation(1, fill_mode='constant', fill_value=0)
-    # self.crop = RandomCrop(self.x_size, self.x_size)
 
     self.backbone = _get_encoder(encoder_type, data_shape)
     self.conv_2 = Conv2D(filters=512, kernel_size=(2,2), strides=(1,1), 
@@ -78,13 +93,6 @@ class Encoder(tf.keras.Model):
     self.flat = Flatten()
     self.dense_1 = Dense(512, activation='relu')
     self.dense_2 = Dense(z_dim, activation=None)
-
-  # def perturb(self, x):
-  #   x = tf.image.random_brightness(x, 0.2)
-  #   x = self.flip(x)
-  #   x = self.rotate(x)
-  #   x = self.crop(x)
-  #   return x
 
   def call(self, x, training=True):
     # if training:
@@ -100,7 +108,7 @@ class Encoder(tf.keras.Model):
 
 class MoCo(tf.keras.Model):
   def __init__(self, data_shape=[64, 64, 3], z_dim=256, max_queue_len=4096, batch_size=64,
-               momentum=0.999, temp=1.0, crop_size=48, encoder_type='ResNet50V2'):
+               momentum=0.999, temp=1.0, encoder_type='ResNet50V2'):
     """ Encode an image into a reduced 1D representation """
     super(MoCo, self).__init__()
     self.n_channels = data_shape[-1]
@@ -109,7 +117,6 @@ class MoCo(tf.keras.Model):
     self.data_shape = data_shape
     self.momentum = momentum
     self.temp = temp
-    self.crop_size = crop_size
     self.batch_size = batch_size
     self.max_queue_len = max_queue_len
 
@@ -122,9 +129,9 @@ class MoCo(tf.keras.Model):
                              initializer=tf.keras.initializers.Constant(self._Q),
                              trainable=False)
     
-    self.encode_g = Encoder(data_shape=data_shape, z_dim=z_dim, crop_size=self.crop_size, 
+    self.encode_g = Encoder(data_shape=data_shape, z_dim=z_dim, 
                             encoder_type=encoder_type)
-    self.encode_k = Encoder(data_shape=data_shape, z_dim=z_dim, crop_size=self.crop_size, 
+    self.encode_k = Encoder(data_shape=data_shape, z_dim=z_dim,
                             encoder_type=encoder_type)
 
 
@@ -140,10 +147,10 @@ class MoCo(tf.keras.Model):
 
 
   def enqueue(self, z):
-      # n = z.shape[0]
-      i = tf.range(self.max_queue_len) < self.batch_size
-      q = self.Q[~i]
-      self.Q = tf.concat([q, z], axis=0)
+    # n = z.shape[0]
+    i = tf.range(self.max_queue_len) < self.batch_size
+    q = self.Q[~i]
+    self.Q = tf.concat([q, z], axis=0)
 
 
   def update_key_model(self):
@@ -189,15 +196,53 @@ class MoCo(tf.keras.Model):
     self.optimizer.apply_gradients(zip(grads, variables))
     gc.collect()
 
-    # self.update_key_model()
-    # for mv, kv in zip(self.encode_g.trainable_variables, self.encode_k.trainable_variables):
-    #   tf.compat.v1.assign(kv, self.momentum * kv + (1-self.momentum) * mv )
+    results = {'key': key_feat, 'loss': loss}
+    return results
 
-    # self.enqueue(key_feat)
-    # i = tf.range(self.max_queue_len) < self.batch_size
-    # q = self.Q[~i]
-    # self.Q = tf.concat([q, key_feat], axis=0, name='update_Q')
 
-    # results = {m.name: m.result() for m in self.metrics}
+
+
+class MoCo_Classifier(MoCo):
+  def __init__(self, data_shape=[64, 64, 3], z_dim=256, max_queue_len=4096, 
+               n_classes=None, mlp_dim=128, batch_size=64, momentum=0.999, temp=1.0,
+               alpha=0.01, beta=0.99,
+               encoder_type='ResNet50V2'):
+
+    """ Encode an image into a reduced 1D representation """
+    super(MoCo_Classifier, self).__init__(data_shape=data_shape, z_dim=z_dim, max_queue_len=max_queue_len, 
+                                          batch_size=batch_size, momentum=momentum, temp=temp, 
+                                          encoder_type=encoder_type)
+
+    assert n_classes is not None
+    self.classifier = Classifier(encoder=self.encode_g, n_classes=n_classes, mlp_dim=mlp_dim)
+    self.xent = tf.keras.losses.CategoricalCrossentropy()
+    self.alpha = alpha
+    self.beta = beta
+
+  def train_step(self, batch):
+    batch_images, batch_labels = batch
+    key_feat = self.encode_k(batch_images)
+    # key_feat = tf.math.l2_normalize(key_feat, axis=1)
+
+    sample_weight = tf.reduce_sum(batch_labels, axis=1) 
+    sample_weight = sample_weight / (tf.reduce_sum(sample_weight) + 1e-7)
+
+    with tf.GradientTape() as tape:
+      q = self.encode_g(batch_images)
+      # q = tf.math.l2_normalize(q, axis=1)
+
+      # skip processing with G again
+      y = self.classifier.mlp_hid(q)
+      y = self.classifier.mlp_out(y)
+      xe = self.xent(batch_labels, y, sample_weight=sample_weight)
+
+      # loss = self.moco_loss(q, tf.stop_gradient(key_feat))#, batch_size=batch.shape[0])
+      loss = self.alpha * xe + self.beta * self.moco_loss(q, tf.stop_gradient(key_feat))
+
+    variables = self.encode_g.trainable_variables + self.classifier.trainable_variables
+    grads = tape.gradient(loss, variables)
+    self.optimizer.apply_gradients(zip(grads, variables))
+    gc.collect()
+
     results = {'key': key_feat, 'loss': loss}
     return results

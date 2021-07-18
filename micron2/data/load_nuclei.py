@@ -103,3 +103,10 @@ def stream_dataset_parallel(fpaths, use_channels=['DAPI', 'CD45', 'PanCytoK'], g
                                cycle_length=len(fpaths), 
                                block_length=4, num_parallel_calls=AUTO)
   return dataset
+
+
+def stream_dataset_images(image_stack):
+  print(f'setting up streaming from images: {image_stack.shape}')
+  dataset = tf.data.Dataset.from_tensor_slices(image_stack)
+
+  return dataset
