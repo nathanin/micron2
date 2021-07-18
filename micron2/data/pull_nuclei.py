@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 import numpy as np
 import pandas as pd
-import pytiff
 import h5py
 import os
 import warnings
 
 from itertools import product as iter_product
+
+try:
+  import pytiff
+except:
+  warnings.warn('Failed to import pytiff')
 
 try:
   import cv2

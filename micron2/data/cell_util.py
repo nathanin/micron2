@@ -1,8 +1,14 @@
-import cv2
 import numpy as np
 import pandas as pd
 import tqdm.auto as tqdm
 import h5py
+import warnings
+
+try:
+  import cv2
+except:
+  warnings.warn('Failed to import cv2')
+
 
 """ Utilities for processing cell images/features """
 

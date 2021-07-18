@@ -1,10 +1,14 @@
 import numpy as np
 import pandas as pd
-import pytiff
 import time
 import h5py
 import os
 import warnings
+
+try:
+  import pytiff
+except:
+  warnings.warn('Failed to import pytiff.')
 
 import tensorflow as tf
 try:

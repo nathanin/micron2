@@ -6,7 +6,8 @@ Process the unique cells into a binary mask, then apply a dilation to get the me
 """
 
 import cv2
-import pytiff
+#import pytiff
+from tifffile import imread as tif_imread
 import numpy as np
 import pandas as pd
 
@@ -41,8 +42,9 @@ import sys
 #   tissue = cv2.morphologyEx(tissue, cv2.MORPH_OPEN, kernel=cv2.getStructuringElement('disk', (20,20)))
 
 def tissue_mask(dapi_file, scale):
-  with pytiff.Tiff(dapi_file, 'r') as f:
-    dapi = f.pages[0][:]
+  # with pytiff.Tiff(dapi_file, 'r') as f:
+  #   dapi = f.pages[0][:]
+  dapi = tif_imread(dapi_file)
   return np.ones_like(dapi, dtype=np.bool)
 
 
@@ -123,13 +125,15 @@ if __name__ == '__main__':
   #   print(f'found output. stopping')
   #   sys.exit(0)
 
-  with pytiff.Tiff(dapi_file, 'r') as f:
-    tissue = f.pages[0][:]
+  # with pytiff.Tiff(dapi_file, 'r') as f:
+  #   tissue = f.pages[0][:]
+  tissue = tif_imread(dapi_file)
   
   th, tw = tissue.shape[:2]
   print(f'DAPI image sized: {tissue.shape}')
 
-  image = cv2.imread(ARGS.input_file,-1)
+  #image = cv2.imread(ARGS.input_file,-1)
+  image = tif_imread(ARGS.input_file)
   print(f'NUCLEI image sized: {image.shape}')
 
   print('resizing')
