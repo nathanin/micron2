@@ -1,6 +1,8 @@
 import numpy as np
 
-import pytiff
+# import pytiff
+from tifffile import imread as tif_imread
+import zarr
 import cv2
 
 import seaborn as sns
@@ -15,10 +17,16 @@ def estimate_channel_background(source):
 def get_multiple_images(sources, bboxes):
   regions = {i: [] for i in range(len(bboxes))}
   for s in sources:
-    with pytiff.Tiff(s, "r") as f:
-      for i,bbox in enumerate(bboxes):
-        img_raw = f.pages[0][bbox[0]:bbox[1], bbox[2]:bbox[3]]
-        regions[i].append(img_raw)
+    store = tif_imread(s, aszarr=True)
+    z = zarr.open(store, mode='r')
+    for i,bbox in enumerate(bboxes):
+      img_raw = z[bbox[0]:bbox[1], bbox[2]:bbox[3]]
+      regions[i].append(img_raw)
+
+    # with pytiff.Tiff(s, "r") as f:
+    #   for i,bbox in enumerate(bboxes):
+    #     img_raw = f.pages[0][bbox[0]:bbox[1], bbox[2]:bbox[3]]
+    #     regions[i].append(img_raw)
 
   regions = [np.dstack(r) for i,r in regions.items()]
   return regions
@@ -27,12 +35,21 @@ def get_multiple_images(sources, bboxes):
 # maxsize should be small; some images may be large 
 @functools.lru_cache(maxsize=8)
 def _load_image(s, a,b,c,d):
-  with pytiff.Tiff(s, "r") as f:
-    x1=a
-    x2=min(b, f.pages[0].shape[0])
-    y1=c
-    y2=min(d, f.pages[0].shape[1])
-    img_raw = f.pages[0][x1:x2, y1:y2]
+
+  store = tif_imread(s, aszarr=True)
+  z = zarr.open(store, mode='r')
+  x1=a
+  x2=min(b, z.shape[0])
+  y1=c
+  y2=min(d, z.shape[1])
+  img_raw = z[x1:x2, y1:y2]
+
+  # with pytiff.Tiff(s, "r") as f:
+  #   x1=a
+  #   x2=min(b, f.pages[0].shape[0])
+  #   y1=c
+  #   y2=min(d, f.pages[0].shape[1])
+  #   img_raw = f.pages[0][x1:x2, y1:y2]
   return img_raw
 
 
@@ -72,8 +89,12 @@ def load_nuclei_mask(nuclei_path, bbox, dilation=1):
     nuclei (np.bool): binary-like image that is true at nuclei borders
   """
 
-  with pytiff.Tiff(nuclei_path, "r") as f:
-    nuclei = f.pages[0][bbox[0]:bbox[1], bbox[2]:bbox[3]]
+  # with pytiff.Tiff(nuclei_path, "r") as f:
+  #   nuclei = f.pages[0][bbox[0]:bbox[1], bbox[2]:bbox[3]]
+
+  store = tif_imread(nuclei_path, aszarr=True)
+  z = zarr.open(store, mode='r')
+  img = z[bbox[0]:bbox[1], bbox[2]:bbox[3]]
 
   nuclei = (nuclei > 0).astype(np.uint8)
   kern = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3))
