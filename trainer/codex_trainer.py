@@ -162,8 +162,13 @@ class ScatterSettings:
                                            css_classes=["my-widgets"])
 
     self.input_file = TextInput(placeholder='sample directory')
-    self.celltype_config_file = TextInput(placeholder='celltype config')
-    self.channel_config_file = TextInput(placeholder='channel config')
+    self.celltype_config_file = TextInput(placeholder='celltype config',
+      value='/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_celltypes.json')
+    self.channel_config_file = TextInput(placeholder='channel config',
+      value='/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_colors.csv')
+
+    self.load_data_button = Button(label='Load data', button_type='success',
+                               margin=(10,10,10,10),)
 
     self.next_image = Button(label='Next image', button_type='success',
                                margin=(10,10,10,10),)
@@ -189,6 +194,7 @@ class ScatterSettings:
         self.input_file,
         self.celltype_config_file,
         self.channel_config_file,
+        self.load_data_button,
         self.next_image,
         self.cluster_view_opts,
         self.dot_size,
@@ -348,9 +354,9 @@ class CodexTrainer:
 
     self.register_callbacks()
 
-    self.set_input_file(None, None, '/storage/codex/preprocessed_data/pembro_TLS_panel/210702_PembroRT_Cas19_TLSpanel_reg2')
-    self.set_channel_config(None, None, '/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_colors.csv')
-    self.set_celltype_config(None, None, '/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_celltypes.json')
+    # self.set_input_file(None, None, '/storage/codex/preprocessed_data/pembro_TLS_panel/210702_PembroRT_Cas19_TLSpanel_reg2')
+    # self.set_channel_config(None, None, '/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_colors.csv')
+    # self.set_celltype_config(None, None, '/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_celltypes.json')
 
 
   
@@ -364,9 +370,11 @@ class CodexTrainer:
 
 
   def register_callbacks(self):
-    self.scatter_widgets.input_file.on_change('value', self.set_input_file)
-    self.scatter_widgets.celltype_config_file.on_change('value', self.set_celltype_config)
-    self.scatter_widgets.channel_config_file.on_change('value', self.set_channel_config)
+    # self.scatter_widgets.input_file.on_change('value', self.set_input_file)
+    # self.scatter_widgets.celltype_config_file.on_change('value', self.set_celltype_config)
+    # self.scatter_widgets.channel_config_file.on_change('value', self.set_channel_config)
+
+    self.scatter_widgets.load_data_button.on_click(lambda a: self._handle_load_data())
 
     # self.scatter_widgets.cluster_view_opts.on_click(lambda x: self.update_scatter())
     # self.scatter_widgets.choose_annotation.on_change('value', self.set_annotation_groups)
@@ -386,9 +394,27 @@ class CodexTrainer:
     self.image_colors.update_image.on_click(self.update_image_plot)
     self.image_colors.celltype_selector.on_change('value', self.set_active_annotation)
 
+
+  def _handle_load_data(self):
+    # we have to set these files in this order:
+    input_dir = self.scatter_widgets.input_file.value
+    self.logger.info(f'Reading input dir: {input_dir}')
+    self.set_input_file(None, None, input_dir)
+
+    channel_file = self.scatter_widgets.channel_config_file.value
+    self.logger.info(f'Channel color config: {channel_file}')
+    self.set_channel_config(None, None, channel_file)
+
+    celltype_file = self.scatter_widgets.celltype_config_file.value
+    self.logger.info(f'Celltype config: {celltype_file}')
+    self.set_celltype_config(None, None, celltype_file)
+
+
+
   def _commit_annotations(self):
     self.logger.info('Committing annotated cells')
     self.logger.info(f'sampling rate: {self.scatter_widgets.sample_rate.value}')
+    self.logger.info(f'sampling from {self.shared_var["coords"].shape[0]} cells')
     # selection_ops_v3.py
     channel_stacks, annot = sample_nuclei(self.shared_var['image_sources'], 
                                           self.shared_var['coords'],
@@ -419,6 +445,9 @@ class CodexTrainer:
 
     annotation_base = f'{annotation_base_dir}/training_cells'
     self.logger.info(f'Writing annotated cell images to {annotation_base}_*')
+    self.logger.info(f'images: {training_images.shape}')
+    self.logger.info(f'annotations: {annot.shape}')
+
     np.save(f'{annotation_base}_images.npy', training_images)
     np.save(f'{annotation_base}_annots.npy', annot)
     np.save(f'{annotation_base}_channels.npy', channel_order)
