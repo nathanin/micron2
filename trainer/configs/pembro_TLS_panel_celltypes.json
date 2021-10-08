@@ -1,1 +1,16 @@
-{"CD8T": ["DAPI", "PanCytoK", "CD8", "CD4"], "CD4T": ["CD3e", "PanCytoK", "CD8", "CD4"], "Endothelial": ["DAPI", "CD31", "PanCytoK", "aSMA"], "Mac": ["DAPI", "PanCytoK", "CD68", "HLA-DR"], "Plasma": ["DAPI", "CD45", "CD138", "PanCytoK"], "DC": ["DAPI", "CD45", "CD11c", "CD3e"], "CD8T_Activated": ["DAPI", "CD8", "LAG3", "PD-1"], "CD4T_Treg": ["DAPI", "CD4", "FOXP3"], "Bcell": ["DAPI", "CD20"], "CD4T_Tfh": ["DAPI", "CD4", "CXCL13", "PD-1"], "CD8T_Trm": ["DAPI", "CD8", "CXCL13", "PD-1"], "Stromal": ["DAPI", "CD45", "CD31", "aSMA", "PanCytoK"], "Epithelial-CXCL13": ["DAPI", "CD45", "CXCL13", "PanCytoK"], "Epithelial": ["DAPI", "PanCytoK", "CD45", "aSMA"]}
+{
+  "CD8T": ["DAPI", "PanCytoK", "CD8", "CD4"], 
+  "CD4T": ["CD3e", "PanCytoK", "CD8", "CD4"], 
+  "Endothelial": ["DAPI", "CD31", "PanCytoK", "aSMA"], 
+  "Mac": ["DAPI", "PanCytoK", "CD68", "HLA-DR"], 
+  "Plasma": ["DAPI", "CD45", "CD138", "PanCytoK"], 
+  "DC": ["DAPI", "CD45", "CD11c", "CD3e"], 
+  "CD8T_Activated": ["DAPI", "CD8", "LAG3", "PD-1"], 
+  "CD4T_Treg": ["DAPI", "CD4", "FOXP3"], 
+  "Bcell": ["DAPI", "CD20"], 
+  "CD4T_Tfh": ["DAPI", "CD4", "CXCL13", "PD-1"], 
+  "CD8T_Trm": ["DAPI", "CD8", "CXCL13", "PD-1"], 
+  "Stromal": ["DAPI", "CD45", "CD31", "aSMA", "PanCytoK"], 
+  "Epithelial-CXCL13": ["DAPI", "CD45", "CXCL13", "PanCytoK"], 
+  "Epithelial": ["DAPI", "PanCytoK", "CD45", "aSMA"]
+}
