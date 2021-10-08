@@ -11,7 +11,8 @@ import gc
 from tensorflow.keras.layers import (Dense, 
   Conv2D, Dropout, BatchNormalization, 
   Conv2DTranspose,
-  Flatten
+  Flatten,
+  SpatialDropout2D
 )
 
 # from tensorflow.keras.layers.experimental.preprocessing import (
@@ -27,6 +28,7 @@ from tensorflow.keras.layers import (Dense,
 import sys
 import gc
 
+from .utils import _get_encoder
 
 class UpdateQueue(Callback):
   def __init__(self, momentum, max_queue_len):
@@ -47,17 +49,17 @@ class UpdateQueue(Callback):
     # gc.collect()
 
 
-def _get_encoder(encoder_type, input_shape):
-  app_args = dict(include_top=False, weights=None,
-                  input_shape=input_shape,
-                  pooling='average')
-  if encoder_type == 'ResNet50V2':
-    return tf.keras.applications.ResNet50V2(**app_args)
-  elif encoder_type == 'EfficientNetB1':
-    return tf.keras.applications.EfficientNetB1(**app_args)
-  else:
-    # Default
-    return tf.keras.applications.ResNet50V2(**app_args)
+# def _get_encoder(encoder_type, input_shape):
+#   app_args = dict(include_top=False, weights=None,
+#                   input_shape=input_shape,
+#                   pooling='average')
+#   if encoder_type == 'ResNet50V2':
+#     return tf.keras.applications.ResNet50V2(**app_args)
+#   elif encoder_type == 'EfficientNetB1':
+#     return tf.keras.applications.EfficientNetB1(**app_args)
+#   else:
+#     # Default
+#     return tf.keras.applications.ResNet50V2(**app_args)
 
 
 class Classifier(tf.keras.Model):
@@ -69,11 +71,12 @@ class Classifier(tf.keras.Model):
     self.n_classes = n_classes
     self.mlp_dim = mlp_dim
 
-    self.mlp_hid = Dense(self.mlp_dim, activation='relu')
+    self.mlp_hid = Dense(self.mlp_dim, activation='relu',
+                         activity_regularizer=tf.keras.regularizers.l2(1e-5))
     self.mlp_out = Dense(self.n_classes, activation='softmax')
 
   def call(self, x, training=True):
-    z = self.encoder(x, training=training)
+    z = tf.stop_gradient(self.encoder(x, training=training))
     z = self.mlp_hid(z)
     y = self.mlp_out(z)
     return y
@@ -87,6 +90,7 @@ class Encoder(tf.keras.Model):
 
     self.x_size = data_shape[0]
 
+    # self.channel_drop = SpatialDropout2D(rate=0.05)
     self.backbone = _get_encoder(encoder_type, data_shape)
     self.conv_2 = Conv2D(filters=512, kernel_size=(2,2), strides=(1,1), 
                padding='same', activation='relu')
@@ -97,6 +101,7 @@ class Encoder(tf.keras.Model):
   def call(self, x, training=True):
     # if training:
     #   x = self.perturb(x)
+    # x = self.channel_drop(x, training=training)
     x = self.backbone(x, training=training)
     x = self.conv_2(x)
     x = self.flat(x)
@@ -205,7 +210,7 @@ class MoCo(tf.keras.Model):
 class MoCo_Classifier(MoCo):
   def __init__(self, data_shape=[64, 64, 3], z_dim=256, max_queue_len=4096, 
                n_classes=None, mlp_dim=128, batch_size=64, momentum=0.999, temp=1.0,
-               alpha=0.01, beta=0.99,
+               alpha=0.0, beta=1.0,
                encoder_type='ResNet50V2'):
 
     """ Encode an image into a reduced 1D representation """
@@ -215,31 +220,31 @@ class MoCo_Classifier(MoCo):
 
     assert n_classes is not None
     self.classifier = Classifier(encoder=self.encode_g, n_classes=n_classes, mlp_dim=mlp_dim)
-    self.xent = tf.keras.losses.CategoricalCrossentropy()
-    self.alpha = alpha
-    self.beta = beta
+    # self.xent = tf.keras.losses.CategoricalCrossentropy()
+    # self.alpha = alpha
+    # self.beta = beta
 
   def train_step(self, batch):
     batch_images, batch_labels = batch
     key_feat = self.encode_k(batch_images)
     # key_feat = tf.math.l2_normalize(key_feat, axis=1)
 
-    sample_weight = tf.reduce_sum(batch_labels, axis=1) 
-    sample_weight = sample_weight / (tf.reduce_sum(sample_weight) + 1e-7)
+    # sample_weight = tf.reduce_sum(batch_labels, axis=1) 
+    # sample_weight = sample_weight / (tf.reduce_sum(sample_weight) + 1e-7)
 
     with tf.GradientTape() as tape:
       q = self.encode_g(batch_images)
       # q = tf.math.l2_normalize(q, axis=1)
 
-      # skip processing with G again
-      y = self.classifier.mlp_hid(q)
-      y = self.classifier.mlp_out(y)
-      xe = self.xent(batch_labels, y, sample_weight=sample_weight)
+      # # skip processing with G again
+      # y = self.classifier.mlp_hid(q)
+      # y = self.classifier.mlp_out(y)
+      # xe = self.xent(batch_labels, y, sample_weight=sample_weight)
 
-      # loss = self.moco_loss(q, tf.stop_gradient(key_feat))#, batch_size=batch.shape[0])
-      loss = self.alpha * xe + self.beta * self.moco_loss(q, tf.stop_gradient(key_feat))
+      loss = self.moco_loss(q, tf.stop_gradient(key_feat))#, batch_size=batch.shape[0])
+      # loss = self.alpha * xe + self.beta * self.moco_loss(q, tf.stop_gradient(key_feat))
 
-    variables = self.encode_g.trainable_variables + self.classifier.trainable_variables
+    variables = self.encode_g.trainable_variables# + self.classifier.trainable_variables
     grads = tape.gradient(loss, variables)
     self.optimizer.apply_gradients(zip(grads, variables))
     gc.collect()

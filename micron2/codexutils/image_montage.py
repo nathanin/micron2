@@ -20,7 +20,7 @@ def outline(img, padding, padval):
   return img
 
 
-def layout_cells(montage, layer, ncol=3, padding=1, padval=250, snake=True):
+def layout_cells(montage, ncol=3, padding=1, padval=250, snake=True):
   """
   snaked:
   1 2 3 4
@@ -37,22 +37,22 @@ def layout_cells(montage, layer, ncol=3, padding=1, padval=250, snake=True):
   this argument can be removed.
   
   """
-  n_regions = len(montage[0])
+  n_regions = len(montage)
   nrow = int(np.ceil(n_regions/ncol))
   
   rows = []
   i = 0
-  expected_shape = montage[layer][0].shape
+  expected_shape = montage[0].shape
   for r in range(nrow):
     row = []
     for c in range(ncol):
       if i >= n_regions:
         if snake & (r%2!=0):
-          row.insert(0, np.zeros_like(montage[0][0]))
+          row.insert(0, np.zeros_like(montage[0]))
         else:
-          row.append(np.zeros_like(montage[0][0]))
+          row.append(np.zeros_like(montage[0]))
       else:
-        img = montage[layer][i].copy()
+        img = montage[i].copy()
         img = outline(img, padding, padval)
         
         if img.shape[0] < expected_shape[0]:

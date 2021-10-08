@@ -16,17 +16,26 @@ def set_dropdown_menu(shared_variables, widgets):
 
 
 
-def pull_images(image_sources, bbox, logger):
+def pull_images(image_sources, bbox, logger, resize=1.):
   logger.info(f'pulling images for bbox: {bbox}')
   images = {}
   for ch, src in image_sources.items():
     logger.info(f'pulling {ch} from image {src}')
     store = imread(src, aszarr=True)
     z = zarr.open(store, mode='r')
-    img = z[bbox[2]:bbox[3], bbox[0]:bbox[1]]
+
+    if (bbox is None) or (bbox[3] >= z.shape[0]) or (bbox[1] >= z.shape[1]):
+      img = z[:]
+    
+    else:
+      img = z[bbox[2]:bbox[3], bbox[0]:bbox[1]]
 
     # in this case, flip up-down
     # img = img[::-1, :]
+    if resize!=1.:
+      img = cv2.resize(img, dsize=(0,0), fx=resize, fy=resize,
+                       interpolation=cv2.INTER_LINEAR)
+
     images[ch] = img[::-1,:].copy()
 
   return images
@@ -60,23 +69,40 @@ def sample_nuclei(image_sources, coords, annotations, logger, sample_rate=0.005,
   sample_coords = coords[sample_inds]
   annotated_coords = coords[has_annotation]
 
+  target_size = (wind, wind)
+
   for ch, src in tqdm.tqdm(image_sources.items()):
     store = imread(src, aszarr=True)
     z = zarr.open(store, mode='r')
+    max_row = z.shape[0]
+    max_col = z.shape[1]
     channel_nuclei = []
     for r,c in sample_coords:
       bbox = [r-s, r+s, c-s, c+s]
+      # if bbox[0] <= 0: continue
+      # if bbox[1] >= max_row: continue
+      # if bbox[2] <= 0: continue
+      # if bbox[3] >= max_col: continue
       img = z[bbox[2]:bbox[3], bbox[0]:bbox[1]]
+      if img.shape != target_size:
+        continue
       channel_nuclei.append(img.copy())
+    valid_nuclei = len(channel_nuclei)
 
     for r,c in annotated_coords:
       bbox = [r-s, r+s, c-s, c+s]
+      # if bbox[0] <= 0: continue
+      # if bbox[1] >= max_row: continue
+      # if bbox[2] <= 0: continue
+      # if bbox[3] >= max_col: continue
       img = z[bbox[2]:bbox[3], bbox[0]:bbox[1]]
+      # if img.shape != target_size:
+      #   continue
       channel_nuclei.append(img.copy())
 
     channel_stacks[ch] = np.stack(channel_nuclei, axis=0)
 
-  annot = ['']*len(sample_inds) + list(annotations[has_annotation])
+  annot = ['']*valid_nuclei + list(annotations[has_annotation])
 
   logger.info('Finished pulling nuclei:')
   for k,v in channel_stacks.items():
@@ -84,3 +110,6 @@ def sample_nuclei(image_sources, coords, annotations, logger, sample_rate=0.005,
 
   return channel_stacks, annot
   
+
+def gather_features(image_sources, feature_df, ):
+  pass

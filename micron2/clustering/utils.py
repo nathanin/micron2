@@ -24,6 +24,19 @@ __all__ = [
   'plot_embedding'
 ]
 
+def _get_encoder(encoder_type, input_shape):
+  app_args = dict(include_top=False, weights=None,
+                  input_shape=input_shape,
+                  pooling='average')
+  if encoder_type == 'ResNet50V2':
+    return tf.keras.applications.ResNet50V2(**app_args)
+  elif encoder_type == 'EfficientNetB1':
+    return tf.keras.applications.EfficientNetB1(**app_args)
+  else:
+    # Default
+    return tf.keras.applications.ResNet50V2(**app_args)
+
+
 def cluster_leiden(features, neighbors=10, resolution=0.6, n_jobs=8):
   adj = kneighbors_graph(features, n_neighbors=neighbors, n_jobs=n_jobs)
   sources, targets = adj.nonzero()

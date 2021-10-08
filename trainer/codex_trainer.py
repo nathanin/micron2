@@ -15,6 +15,7 @@ from bokeh.layouts import column, row, layout, gridplot
 from bokeh.models import (ColumnDataSource, BoxSelectTool, LassoSelectTool, Button, 
                           Div, Select, Slider, TextInput, MultiChoice, MultiSelect, ColorPicker, 
                           Dropdown, Span, CheckboxButtonGroup, Toggle, FileInput, RangeSlider,
+                          RadioButtonGroup,
                           CheckboxGroup, Spinner, Panel, Tabs, TapTool)
 from bokeh.plotting import figure
 from bokeh.models import Range1d
@@ -30,12 +31,41 @@ from micron2.codexutils import blend_images, load_nuclei_mask
 
 import pickle
 import logging
-from .selection_ops_v3 import pull_images, sample_nuclei
+from .selection_ops_v3 import pull_images, sample_nuclei, gather_features
 from .load_data import set_active_slide, load_celltype_config, load_color_config
 from datetime import datetime
 import os
 # from .scatter_gate import ScatterGate
 # from .boxplot import BokehBoxPlot
+
+SAMPLE_DIRS = []
+SAMPLE_SOURCES = [
+  '/common/ingn/CODEX_PROCESSED_DATA/pembroRT_immune/phase1',
+  '/common/ingn/CODEX_PROCESSED_DATA/pembroRT_immune/phase2',
+  '/common/ingn/CODEX_PROCESSED_DATA/transgenderTMA'
+]
+# REGISTERED_SAMPLES = pd.read_csv('registered_samples.csv')
+
+for s in SAMPLE_SOURCES:
+  SAMPLE_DIRS += glob.glob(f'{s}/*/')
+print(SAMPLE_DIRS)
+
+SAMPLE_DIRS = sorted(SAMPLE_DIRS)
+def _sample_dir2name(d):
+  r = os.path.basename(d[:-1])
+  print(f'getting display name for {d}: {r}')
+
+  return r
+
+def filter_dirs(d):
+  has_centroid_file = len(glob.glob(f'{d}/*centroids.csv')) > 0
+  return has_centroid_file
+
+SAMPLE_DIRS = {_sample_dir2name(s):s for s in SAMPLE_DIRS if filter_dirs(s)} 
+
+
+print(SAMPLE_DIRS)
+
 
 # https://docs.bokeh.org/en/latest/docs/gallery/color_sliders.html
 def hex_to_dec(hex):
@@ -141,8 +171,15 @@ class ScatterImagePane:
     pass
 
 
+CELLTYPE_DEFS = {
+'pembroRT TLS': '/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_celltypes.json',
+'transgender TMA': '/home/ingn/devel/micron2/trainer/configs/transgenderTMA_celltypes.json',
+}
 
-
+COLOR_CONFIGS = {
+'pembroRT TLS': '/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_colors.csv',
+'transgender TMA': '/home/ingn/devel/micron2/trainer/configs/transgenderTMA_colors.csv',
+}
 
 CLUSTER_VIEW_OPTS = [
   'Hide scatter plot'
@@ -150,6 +187,11 @@ CLUSTER_VIEW_OPTS = [
 class ScatterSettings:
   def __init__(self, logger):
     self.logger = logger
+
+    self.sample_select = Select(options=list(SAMPLE_DIRS.keys()), 
+                                # active=list(SAMPLE_DIRS.keys())[0], 
+                                css_classes=["my-widgets"])
+
     # Setter for active color annotation
     self.cluster_select = CheckboxGroup(active=[], labels=[], 
                                         margin=(10,10,10,10),
@@ -161,13 +203,20 @@ class ScatterSettings:
                                            margin=(10,10,10,10),
                                            css_classes=["my-widgets"])
 
-    self.input_file = TextInput(placeholder='sample directory')
-    self.celltype_config_file = TextInput(placeholder='celltype config',
-      value='/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_celltypes.json')
-    self.channel_config_file = TextInput(placeholder='channel config',
-      value='/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_colors.csv')
+    # self.input_file = TextInput(placeholder='sample directory')
 
-    self.load_data_button = Button(label='Load data', button_type='success',
+    # self.celltype_config_file = TextInput(placeholder='celltype config',
+    #   value='/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_celltypes.json')
+    # self.channel_config_file = TextInput(placeholder='channel config',
+    #   value='/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_colors.csv')
+
+    self.celltype_config_file = Select(options=list(CELLTYPE_DEFS.keys()), 
+                                css_classes=["my-widgets"])
+
+    self.channel_config_file = Select(options=list(COLOR_CONFIGS.keys()), 
+                                css_classes=["my-widgets"])
+
+    self.load_data_button = Button(label='Initialize', button_type='success',
                                margin=(10,10,10,10),)
 
     self.next_image = Button(label='Next image', button_type='success',
@@ -181,6 +230,8 @@ class ScatterSettings:
 
     self.commit_annotations = Button(label='Commit annotations', button_type='success',
                                margin=(10,10,10,10),)
+    self.fit_predict = Button(label='Fit & Predict', button_type='success',
+                               margin=(10,10,10,10),)
     self.sample_rate = Spinner(low=0.01, high=1, step=0.01, value=0.05, 
                             css_classes=["my-widgets"], name='sample rate', 
                             width=100)
@@ -191,7 +242,8 @@ class ScatterSettings:
   @property
   def layout(self):
     l = column([
-        self.input_file,
+        self.sample_select,
+        # self.input_file,
         self.celltype_config_file,
         self.channel_config_file,
         self.load_data_button,
@@ -202,6 +254,7 @@ class ScatterSettings:
         self.cluster_select, 
         self.commit_annotations,
         self.sample_rate,
+        self.fit_predict,
         # self.choose_region, 
         # self.region_select
       ],
@@ -219,6 +272,8 @@ class ImageColorSettings:
   def __init__(self, logger):
     self.logger = logger
     self.channels = []
+
+    self.view_selector = RadioButtonGroup(labels=['Overview', '1x'], active=0)
 
     self.celltype_selector = Select(title="Annotate celltype:", 
                                     options=[], css_classes=['my-widgets'])
@@ -311,7 +366,7 @@ class ImageColorSettings:
       self.focus_channel_buttons('nuclei'),
       self.channel_color_pickers('nuclei'),
     ])
-    return [self.celltype_selector, self.update_image, self.resize, nuclei_settings]
+    return [self.view_selector, self.celltype_selector, self.update_image, self.resize, nuclei_settings]
 
 
   @property
@@ -329,9 +384,6 @@ class ImageColorSettings:
 
   def reset(self):
     pass
-
-
-
 
 
 
@@ -370,10 +422,6 @@ class CodexTrainer:
 
 
   def register_callbacks(self):
-    # self.scatter_widgets.input_file.on_change('value', self.set_input_file)
-    # self.scatter_widgets.celltype_config_file.on_change('value', self.set_celltype_config)
-    # self.scatter_widgets.channel_config_file.on_change('value', self.set_channel_config)
-
     self.scatter_widgets.load_data_button.on_click(lambda a: self._handle_load_data())
 
     # self.scatter_widgets.cluster_view_opts.on_click(lambda x: self.update_scatter())
@@ -384,7 +432,8 @@ class CodexTrainer:
     # self.scatter_widgets.region_select.on_click(lambda a: self.draw_region())
 
     self.scatter_widgets.next_image.on_click(lambda a: self.cycle_image())
-    self.scatter_widgets.commit_annotations.on_click(lambda a: self._commit_annotations())
+    self.scatter_widgets.commit_annotations.on_click(lambda a: self._commit_annotations_v2())
+    self.scatter_widgets.fit_predict.on_click(lambda a: self._fit_predict())
 
     # self.scatter_image.scatter.data_source.selected.on_change('indices', self.update_box_selection)
 
@@ -397,60 +446,105 @@ class CodexTrainer:
 
   def _handle_load_data(self):
     # we have to set these files in this order:
-    input_dir = self.scatter_widgets.input_file.value
+    #input_dir = self.scatter_widgets.input_file.value
+
+    self.logger.info('Pulling input dir from dropdown selector')
+    input_dir = SAMPLE_DIRS[self.scatter_widgets.sample_select.value]
+
     self.logger.info(f'Reading input dir: {input_dir}')
     self.set_input_file(None, None, input_dir)
 
-    channel_file = self.scatter_widgets.channel_config_file.value
+    channel_file = COLOR_CONFIGS[self.scatter_widgets.channel_config_file.value]
     self.logger.info(f'Channel color config: {channel_file}')
     self.set_channel_config(None, None, channel_file)
 
-    celltype_file = self.scatter_widgets.celltype_config_file.value
+    celltype_file = CELLTYPE_DEFS[self.scatter_widgets.celltype_config_file.value]
     self.logger.info(f'Celltype config: {celltype_file}')
     self.set_celltype_config(None, None, celltype_file)
 
 
 
-  def _commit_annotations(self):
-    self.logger.info('Committing annotated cells')
-    self.logger.info(f'sampling rate: {self.scatter_widgets.sample_rate.value}')
-    self.logger.info(f'sampling from {self.shared_var["coords"].shape[0]} cells')
-    # selection_ops_v3.py
-    channel_stacks, annot = sample_nuclei(self.shared_var['image_sources'], 
-                                          self.shared_var['coords'],
-                                          np.array(self.shared_var['cell_data']['annotation']),
-                                          self.logger,
-                                          sample_rate = self.scatter_widgets.sample_rate.value
-    )
+  # def _commit_annotations(self):
+  #   self.logger.info('Committing annotated cells')
+  #   self.logger.info(f'sampling rate: {self.scatter_widgets.sample_rate.value}')
+  #   self.logger.info(f'sampling from {self.shared_var["coords"].shape[0]} cells')
+  #   # selection_ops_v3.py
+  #   channel_stacks, annot = sample_nuclei(self.shared_var['image_sources'], 
+  #                                         self.shared_var['coords'],
+  #                                         np.array(self.shared_var['cell_data']['annotation']),
+  #                                         self.logger,
+  #                                         sample_rate = self.scatter_widgets.sample_rate.value
+  #   )
 
-    channel_order = np.array(self.shared_var['all_channels'])
-    for ch in channel_order:
-      slow = self.image_colors.channel_low_thresholds(ch).value
-      shigh = self.image_colors.channel_high_thresholds(ch).value
-      self.logger.info(f'saturating channel {ch}: {slow} - {shigh}')
-      stacked_imgs = channel_stacks[ch]
-      # stacked_imgs = stacked_imgs - slow
-      stacked_imgs[stacked_imgs < slow] = 0
-      stacked_imgs[stacked_imgs > shigh] = shigh
-      stacked_imgs = stacked_imgs / shigh
-      channel_stacks[ch] = (stacked_imgs * 255).astype(np.uint8)
+  #   channel_order = np.array(self.shared_var['all_channels'])
+  #   for ch in channel_order:
+  #     slow = self.image_colors.channel_low_thresholds(ch).value
+  #     shigh = self.image_colors.channel_high_thresholds(ch).value
+  #     self.logger.info(f'saturating channel {ch}: {slow} - {shigh}')
+  #     stacked_imgs = channel_stacks[ch]
+  #     # stacked_imgs = stacked_imgs - slow
+  #     stacked_imgs[stacked_imgs < slow] = 0
+  #     stacked_imgs[stacked_imgs > shigh] = shigh
+  #     stacked_imgs = stacked_imgs / shigh
+  #     channel_stacks[ch] = (stacked_imgs * 255).astype(np.uint8)
 
-    training_images = np.stack([channel_stacks[ch] for ch in channel_order], axis=-1)
-    annot = np.array(annot)
+  #   training_images = np.stack([channel_stacks[ch] for ch in channel_order], axis=-1)
+  #   annot = np.array(annot)
 
-    now = f'collection-{datetime.now().strftime("%y-%h-%d-%H-%M-%S")}'
-    annotation_base_dir = f'{self.shared_var["data_dir"]}/{now}'
-    if not os.path.exists(annotation_base_dir):
-      os.makedirs(annotation_base_dir)
+  #   now = f'collection-{datetime.now().strftime("%y-%h-%d-%H-%M-%S")}'
+  #   annotation_base_dir = f'{self.shared_var["data_dir"]}/{now}'
+  #   if not os.path.exists(annotation_base_dir):
+  #     os.makedirs(annotation_base_dir)
 
-    annotation_base = f'{annotation_base_dir}/training_cells'
-    self.logger.info(f'Writing annotated cell images to {annotation_base}_*')
-    self.logger.info(f'images: {training_images.shape}')
-    self.logger.info(f'annotations: {annot.shape}')
+  #   annotation_base = f'{annotation_base_dir}/training_cells'
+  #   self.logger.info(f'Writing annotated cell images to {annotation_base}_*')
+  #   self.logger.info(f'images: {training_images.shape}')
+  #   self.logger.info(f'annotations: {annot.shape}')
 
-    np.save(f'{annotation_base}_images.npy', training_images)
-    np.save(f'{annotation_base}_annots.npy', annot)
-    np.save(f'{annotation_base}_channels.npy', channel_order)
+  #   np.save(f'{annotation_base}_images.npy', training_images)
+  #   np.save(f'{annotation_base}_annots.npy', annot)
+  #   np.save(f'{annotation_base}_channels.npy', channel_order)
+
+  def _fit_predict(self):
+    self.logger.info('Fitting classifier & running prediction on the current image')
+
+    cell_data = self.shared_var['cell_data'].copy()
+
+    # There's some bullshit happening here , if we use:
+    #    annotated_classes = cell_data['annotation'].dropna().unique()
+    # there's a blank class returned for some reason
+    annotated_classes = []
+    for u in cell_data['annotation'].dropna().unique():
+      if u=='':continue
+      c = np.sum(cell_data['annotation'] == u)
+      self.logger.info(f'Annotation for: {u}: {c}')
+      annotated_classes.append(u)
+
+    feature_df = pd.DataFrame(index=cell_data.index, 
+                            columns=self.shared_var['available_channels'])
+    current_tile_cells = self.shared_var['visible_cells']
+    annotated_cells = cell_data.loc[cell_data['annotation'].isin(annotated_classes)].index
+    self.logger.info(f'visible cells: {len(current_tile_cells)}')
+    self.logger.info(f'all annotated cells: {len(annotated_cells)}')
+    use_cells = list(current_tile_cells) + list(annotated_cells)
+
+    feature_df = feature_df.loc[feature_df.index.isin(use_cells)]
+    feature_df['annotation'] = cell_data.loc[feature_df.index, 'annotation']
+
+    self.logger.info(f'Set up naive feature_df dict: {feature_df.shape}') 
+    
+
+
+  def _commit_annotations_v2(self):
+    self.logger.info('Committing annotated cells') 
+    # annotation = np.array(self.shared_var['cell_data']['annotation']),
+
+    now = f'annotation-{datetime.now().strftime("%y-%h-%d-%H-%M-%S")}'
+    annotation_file = f'{self.shared_var["data_dir"]}/{now}.csv'
+    self.logger.info(f'Writing cell data to {annotation_file}')
+    self.shared_var['cell_data'].to_csv(annotation_file)
+
+
 
 
   def stage_annotation(self, attr, old, new):
@@ -482,6 +576,7 @@ class CodexTrainer:
     self.logger.info(f'Setting annotation to highlight celltype: {new}')
     active_channels = self.shared_var['celltype_channels'][new]
     self.logger.info(f'corresponding channels: {active_channels}')
+
     # De-select all channels first
     for ch in self.shared_var['all_channels']:
       button = self.image_colors.focus_channel_buttons(ch)
@@ -512,6 +607,7 @@ class CodexTrainer:
   def set_channel_config(self, attr, old, new):
     load_color_config(new, self.shared_var, self.logger)
     available_images = [ch for ch, val in self.shared_var['image_sources'].items() if val is not None]
+    self.shared_var['available_channels'] = available_images
 
     self.logger.info(f'populating available channels...')
     color_widgets = self.image_colors.default_color_widget_list()
@@ -529,18 +625,58 @@ class CodexTrainer:
     set_active_slide(self.active_file, self.shared_var, self.logger)
 
 
+  def reset_to_overview(self):
+    """
+    0. stash settings to reset current view. keep the image data around. 
+    1. set display height and width to match the overall image
+    2. set image source with saved overall image data, blended into the currently active color set
+    3. set coordinates shown to all, with the currently active dot annotation
+    4. view_toggle_botton: set to "overall"
+    """
+
+    pass
+
+
+  def reset_to_zoomedview(self):
+
+    pass
+
+
 
   def cycle_image(self):
-    bbox = next(self.shared_var['bbox_generator'])
-    self.active_bbox = bbox
+    overview_mode = self.image_colors.view_selector.active==0
+    self.logger.info(f'upading image in overview mode: {overview_mode}')
+
+    if overview_mode:
+      bbox = None
+    else:
+      bbox = next(self.shared_var['bbox_generator'])
+      self.active_bbox = bbox
+
     self.logger.info(f'Cycling image. next bbox: {bbox}')
 
     rows = np.array(self.shared_var['coords'][:,0])
     cols = np.array(self.shared_var['coords'][:,1])
 
+    self.current_images = pull_images(self.shared_var['image_sources'], bbox, self.logger, 
+                                      resize = self.image_colors.resize.value if overview_mode else 1)
+
+    for i, (k,v) in enumerate(self.current_images.items()):
+      self.logger.info(f'{i} image {k}: {v.shape}')
+
+    if overview_mode:
+      # current_shape = list(self.current_images.keys())[0]
+      current_shape = self.current_images[list(self.current_images.keys())[0]].shape
+      self.logger.info(f'Setting bbox for overview based on loaded image: {current_shape}')
+      self.active_bbox = [0, current_shape[0], 0, current_shape[1]]
+      bbox = self.active_bbox
+      self.logger.info(f'active bbox: {self.active_bbox}, bbox: {bbox}')
+
     visible_cells_row = (rows > bbox[0]) & (rows < bbox[1])
     visible_cells_col = (cols > bbox[2]) & (cols < bbox[3])
     visible_cells = visible_cells_col & visible_cells_row
+
+    self.shared_var['visible_cells'] = self.shared_var['cell_names'][visible_cells]
 
     self.logger.info(f'region contains {np.sum(visible_cells)} cells')
 
@@ -560,15 +696,14 @@ class CodexTrainer:
       color = np.array([hex_to_dec(self.shared_var['default_dot_color'])[:3]] * np.sum(visible_cells)),
       index = self.shared_var['cell_names'][visible_cells]
     )
-    self.scatter_image.scatter_source.data = data
+  # update the axis ranges to contain the whole bbox.
 
-    # update the axis ranges to contain the whole bbox.
     self.scatter_image.p.x_range.start = bbox[2] - coord_shift_x
     self.scatter_image.p.x_range.end = bbox[3] - coord_shift_x
     self.scatter_image.p.y_range.start = bbox[0] - coord_shift_y
     self.scatter_image.p.y_range.end = bbox[1] - coord_shift_y
+    self.scatter_image.scatter_source.data = data
 
-    self.current_images = pull_images(self.shared_var['image_sources'], bbox, self.logger)
     self.update_image_plot()
 
 
@@ -708,7 +843,7 @@ class CodexTrainer:
       nuclei = None
       nuclei_color = None
     blended = blend_images(images, saturation_vals=saturation, colors=colors, 
-                          nuclei=nuclei, nuclei_color=nuclei_color)
+                           nuclei=nuclei, nuclei_color=nuclei_color)
     blended = blended[::-1,:] # flip
     self.logger.info(f'created blended image: {blended.shape}')
 

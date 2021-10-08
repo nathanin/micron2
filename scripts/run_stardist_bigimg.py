@@ -1,17 +1,19 @@
 #!/usr/bin/env python
 
 import numpy as np
-import pytiff
 
 # import itertools
 import argparse
 import logging
 
+from tifffile import imread as tif_imread
+
 # Need this with RTX 3000 series GPU , TF 2.4.0 installed via pip and CUDA 11, cudnn 8 via conda
 # otherwise it will say no algorithm worked. very bad.
 import tensorflow as tf
 physical_devices = tf.config.list_physical_devices('GPU')
-tf.config.experimental.set_memory_growth(physical_devices[0], True)
+for d in physical_devices:
+  tf.config.experimental.set_memory_growth(d, True)
 
 import cv2
 import os
@@ -69,10 +71,11 @@ def main(args):
     img = cv2.imread(image_path, -1)[:,:,::-1] # CV2 uses BGR channel order; reverse it to RGB.
 
   else:
-    logger.info('using pytiff')
-    with pytiff.Tiff(image_path, 'r') as handle:
-      page = handle.pages[args.page] 
-      img = page[:]
+    logger.info('using tifffile')
+    img = tif_imread(image_path)
+    #with pytiff.Tiff(image_path, 'r') as handle:
+    #  page = handle.pages[args.page] 
+    #  img = page[:]
 
 
   logger.info(f'loaded image shape: {img.shape} type: {img.dtype} min/max: {img.min()} {img.max()}')

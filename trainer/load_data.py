@@ -102,7 +102,7 @@ def find_populated_regions(coords, tilesize=3096, min_cells=500):
   return use_tiles
 
 
-def _generate_regions(coords, tilesize):
+def _generate_regions(coords):
   for co in itertools.cycle(coords):
     # yield (co[0], co[0]+tilesize, co[1], co[1]+tilesize)
     yield co
@@ -111,6 +111,8 @@ def _generate_regions(coords, tilesize):
 def set_active_slide(data_dir, shared_variables, logger):
 
   # data_dir = os.path.dirname(csv_path)
+  data_dir = data_dir[:-1] if data_dir.endswith('/') else data_dir
+
   full_sample_id = os.path.split(data_dir)[-1]
   csv_path = f'{data_dir}/{full_sample_id}_2_centroids.csv'
   logger.info(f'data dir: {data_dir}')
@@ -132,10 +134,10 @@ def set_active_slide(data_dir, shared_variables, logger):
   # path for nuclear segmentation
   nuclei_path = f'{data_dir}/{full_sample_id}_2_nuclei.tif'
 
-  use_tiles = find_populated_regions(coords, tilesize=3096, min_cells=500)
+  use_tiles = find_populated_regions(coords, tilesize=1024, min_cells=200)
   logger.info(f'Found {len(use_tiles)} densely populated tiles')
 
-  bbox_generator = _generate_regions(use_tiles, 3096)
+  bbox_generator = _generate_regions(use_tiles)
 
   _shared_variables = dict(
     n_cells = cells.shape[0],
