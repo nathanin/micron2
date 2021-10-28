@@ -1,0 +1,5 @@
+{
+    "Basal": ["DAPI", "ACTA2", "KRT8"],
+    "Endothelial": ["DAPI", "ACTA2", "CD31"],
+    "LUM_HRp": ["DAPI", "PGR", "AR", "ESR1"]
+}

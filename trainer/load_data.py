@@ -118,7 +118,26 @@ def set_active_slide(data_dir, shared_variables, logger):
   logger.info(f'data dir: {data_dir}')
   logger.info(f'full sample id: {full_sample_id}')
   logger.info(f'loading cells: {csv_path}')
-  cells = pd.read_csv(csv_path, index_col=0, header=0)
+
+  annotation_path = f'{data_dir}/{full_sample_id}_3_annotation.csv'
+  if os.path.exists(annotation_path):
+    logger.info(f'loading annotations from {annotation_path}')
+    cells = pd.read_csv(annotation_path, index_col=0, header=0, 
+      dtype={'celltype': str, 'subtype': str, 'district': str, 
+             'TLS_district': str, 'X': int, 'Y': int})
+    existing_annotations = ['']+[c for c in cells.columns if c not in ['X', 'Y']]
+  else:
+    cells = pd.read_csv(csv_path, index_col=0, header=0)
+    existing_annotations = ['']
+
+  # pad dummy coords so we can view datasets without doing segmentation first
+  if cells.shape[0] == 0:
+    logger.info(f'Preparing to show sample without pre-segmented cells.')
+    for i in range(5):
+      cells.loc[i,:] = 1
+
+    print(cells)
+
 
   logger.info(f'Visualizing {cells.shape[0]} cells')
   cells['color'] = ['#94b5eb']*cells.shape[0]
@@ -134,28 +153,31 @@ def set_active_slide(data_dir, shared_variables, logger):
   # path for nuclear segmentation
   nuclei_path = f'{data_dir}/{full_sample_id}_2_nuclei.tif'
 
-  use_tiles = find_populated_regions(coords, tilesize=1024, min_cells=200)
-  logger.info(f'Found {len(use_tiles)} densely populated tiles')
+  # use_tiles = find_populated_regions(coords, tilesize=1024, min_cells=200)
+  # logger.info(f'Found {len(use_tiles)} densely populated tiles')
 
-  bbox_generator = _generate_regions(use_tiles)
+  # bbox_generator = _generate_regions(use_tiles)
 
   _shared_variables = dict(
     n_cells = cells.shape[0],
     data_dir = data_dir,
     cell_names = np.array(cells.index),
     nbins = 100,
-    use_tiles = use_tiles,
-    bbox_generator = bbox_generator,
+    # use_tiles = use_tiles,
+    # bbox_generator = bbox_generator,
+    use_tiles = None,
+    bbox_generator = None,
     background_color = '#636363',
-    foreground_color = '#e34a33',
+    foreground_color = '#636363',
     neighbor_color = '#5e6bf2',
     default_channel_color = '#a2a2a2',
     coords = coords,
     nuclei_path = nuclei_path,
     default_dot_color = '#3d3d3d',
     cell_data = cells,
-    y_shift=min(coords[:,1]),
-    x_shift=min(coords[:,0]),
+    y_shift=min(coords[:,1]) if coords.shape[0]>0 else 0,
+    x_shift=min(coords[:,0]) if coords.shape[0]>0 else 0,
+    existing_annotations=existing_annotations,
   )
 
   shared_variables.update(_shared_variables)

@@ -1,6 +1,6 @@
 {
   "CD8T": ["DAPI", "PanCytoK", "CD8", "CD4"], 
-  "CD4T": ["CD3e", "PanCytoK", "CD8", "CD4"], 
+  "CD4T": ["DAPI", "PanCytoK", "CD8", "CD4"], 
   "Endothelial": ["DAPI", "CD31", "PanCytoK", "aSMA"], 
   "Mac": ["DAPI", "PanCytoK", "CD68", "HLA-DR"], 
   "Plasma": ["DAPI", "CD45", "CD138", "PanCytoK"], 

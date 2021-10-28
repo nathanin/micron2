@@ -15,7 +15,7 @@ from bokeh.layouts import column, row, layout, gridplot
 from bokeh.models import (ColumnDataSource, BoxSelectTool, LassoSelectTool, Button, 
                           Div, Select, Slider, TextInput, MultiChoice, MultiSelect, ColorPicker, 
                           Dropdown, Span, CheckboxButtonGroup, Toggle, FileInput, RangeSlider,
-                          RadioButtonGroup,
+                          RadioButtonGroup, TextAreaInput,
                           CheckboxGroup, Spinner, Panel, Tabs, TapTool)
 from bokeh.plotting import figure
 from bokeh.models import Range1d
@@ -51,20 +51,27 @@ for s in SAMPLE_SOURCES:
 print(SAMPLE_DIRS)
 
 SAMPLE_DIRS = sorted(SAMPLE_DIRS)
+import json
+NAMED_SAMPLES = json.load(open('/home/ingn/devel/micron2/trainer/configs/named_samples.json', 'r'))
 def _sample_dir2name(d):
   r = os.path.basename(d[:-1])
   print(f'getting display name for {d}: {r}')
+  if r in NAMED_SAMPLES.keys():
+    return NAMED_SAMPLES[r]
+  else:
+    return r
 
-  return r
 
-def filter_dirs(d):
-  has_centroid_file = len(glob.glob(f'{d}/*centroids.csv')) > 0
-  return has_centroid_file
-
+filter_dirs = lambda d: len(glob.glob(f'{d}/*centroids.csv')) > 0
 SAMPLE_DIRS = {_sample_dir2name(s):s for s in SAMPLE_DIRS if filter_dirs(s)} 
 
 
 print(SAMPLE_DIRS)
+
+
+DEFAULT_COLORS = [l.strip() for l in open('/home/ingn/devel/micron2/trainer/configs/tab20_colors.txt')]
+with open('/home/ingn/devel/micron2/trainer/configs/pembroRT_categorical_colors.json') as json_file:
+  AVAILABLE_COLORS = json.load(json_file)
 
 
 # https://docs.bokeh.org/en/latest/docs/gallery/color_sliders.html
@@ -188,7 +195,8 @@ class ScatterSettings:
   def __init__(self, logger):
     self.logger = logger
 
-    self.sample_select = Select(options=list(SAMPLE_DIRS.keys()), 
+    self.sample_select = Select(value=list(SAMPLE_DIRS.keys())[0], 
+                                options=sorted(list(SAMPLE_DIRS.keys())), 
                                 # active=list(SAMPLE_DIRS.keys())[0], 
                                 css_classes=["my-widgets"])
 
@@ -210,10 +218,10 @@ class ScatterSettings:
     # self.channel_config_file = TextInput(placeholder='channel config',
     #   value='/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_colors.csv')
 
-    self.celltype_config_file = Select(options=list(CELLTYPE_DEFS.keys()), 
+    self.celltype_config_file = Select(value=list(CELLTYPE_DEFS.keys())[0], options=list(CELLTYPE_DEFS.keys()), 
                                 css_classes=["my-widgets"])
 
-    self.channel_config_file = Select(options=list(COLOR_CONFIGS.keys()), 
+    self.channel_config_file = Select(value=list(COLOR_CONFIGS.keys())[0], options=list(COLOR_CONFIGS.keys()), 
                                 css_classes=["my-widgets"])
 
     self.load_data_button = Button(label='Initialize', button_type='success',
@@ -222,9 +230,12 @@ class ScatterSettings:
     self.next_image = Button(label='Next image', button_type='success',
                                margin=(10,10,10,10),)
 
-    self.dot_size = Spinner(low=1, high=10, step=1, value=3, 
+    self.userfeedback = TextAreaInput(value="", rows=6, title="Info:")
+
+    self.dot_size = Spinner(low=0.05, high=10, step=0.1, value=0.5, 
                             css_classes=["my-widgets"], name='Dot size', 
                             width=100)
+
     self.choose_annotation = Select(title="Choose annotation:", 
                                options=[], css_classes=['my-widgets'])
 
@@ -250,7 +261,8 @@ class ScatterSettings:
         self.next_image,
         self.cluster_view_opts,
         self.dot_size,
-        self.choose_annotation,
+        self.choose_annotation, 
+        self.userfeedback,
         self.cluster_select, 
         self.commit_annotations,
         self.sample_rate,
@@ -301,9 +313,9 @@ class ImageColorSettings:
       #                  width=75, value=0, css_classes=["my-widgets"])
     )
 
-    self.resize = Spinner(low=0.1, high=1, step=0.05, value=0.2, 
-                            css_classes=["my-widgets"], name='Dot size', 
-                            width=100)
+    self.resize = Spinner(low=0.05, high=1, step=0.05, value=0.05, 
+                          css_classes=["my-widgets"], name='Dot size', 
+                          width=100)
     self.layout = self.default_color_widgets
     self.active_channels = dict(nuclei=False)
 
@@ -406,11 +418,6 @@ class CodexTrainer:
 
     self.register_callbacks()
 
-    # self.set_input_file(None, None, '/storage/codex/preprocessed_data/pembro_TLS_panel/210702_PembroRT_Cas19_TLSpanel_reg2')
-    # self.set_channel_config(None, None, '/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_colors.csv')
-    # self.set_celltype_config(None, None, '/home/ingn/devel/micron2/trainer/configs/pembro_TLS_panel_celltypes.json')
-
-
   
   def make_logger(self):
     self.logger = logging.getLogger('vis')
@@ -424,9 +431,9 @@ class CodexTrainer:
   def register_callbacks(self):
     self.scatter_widgets.load_data_button.on_click(lambda a: self._handle_load_data())
 
-    # self.scatter_widgets.cluster_view_opts.on_click(lambda x: self.update_scatter())
-    # self.scatter_widgets.choose_annotation.on_change('value', self.set_annotation_groups)
-    # self.scatter_widgets.dot_size.on_change('value', lambda a,o,n: self.update_scatter())
+    self.scatter_widgets.cluster_view_opts.on_click(lambda x: self.update_scatter())
+    self.scatter_widgets.choose_annotation.on_change('value', lambda a,o,n: self.update_scatter())
+    self.scatter_widgets.dot_size.on_change('value', lambda a,o,n: self.update_scatter())
 
     # self.scatter_widgets.cluster_select.on_click(lambda a: self.update_scatter())
     # self.scatter_widgets.region_select.on_click(lambda a: self.draw_region())
@@ -447,6 +454,7 @@ class CodexTrainer:
   def _handle_load_data(self):
     # we have to set these files in this order:
     #input_dir = self.scatter_widgets.input_file.value
+    self.message2user(f'Loading slide & configs...')
 
     self.logger.info('Pulling input dir from dropdown selector')
     input_dir = SAMPLE_DIRS[self.scatter_widgets.sample_select.value]
@@ -454,13 +462,17 @@ class CodexTrainer:
     self.logger.info(f'Reading input dir: {input_dir}')
     self.set_input_file(None, None, input_dir)
 
+    self.logger.info(f'channel config value: {self.scatter_widgets.channel_config_file.value}')
     channel_file = COLOR_CONFIGS[self.scatter_widgets.channel_config_file.value]
     self.logger.info(f'Channel color config: {channel_file}')
     self.set_channel_config(None, None, channel_file)
 
+    self.logger.info(f'celltype config value: {self.scatter_widgets.celltype_config_file.value}')
     celltype_file = CELLTYPE_DEFS[self.scatter_widgets.celltype_config_file.value]
     self.logger.info(f'Celltype config: {celltype_file}')
     self.set_celltype_config(None, None, celltype_file)
+
+    self.scatter_widgets.choose_annotation.options = self.shared_var['existing_annotations']
 
 
 
@@ -568,7 +580,8 @@ class CodexTrainer:
     # update the color of the cell we just selected
     data = self.scatter_image.scatter_source.data.copy()
     self.logger.info(f'setting color: {active_annotation_color}')
-    data['color'][new] = hex_to_dec(active_annotation_color)[:3]
+    # data['color'][new] = hex_to_dec(active_annotation_color)[:3]
+    data['color'][new] = active_annotation_color
     self.scatter_image.scatter_source.data = data
 
 
@@ -593,7 +606,8 @@ class CodexTrainer:
       button = self.image_colors.focus_channel_buttons(ch)
       button.button_type = 'danger' # red
       picker = self.image_colors.channel_color_pickers(ch)
-      picker.color = hex_to_dec(self.shared_var['color_wheel'][i])[:3]
+      # color wheel has 5 predefined colors 
+      picker.color = hex_to_dec(self.shared_var['color_wheel'][i%5])[:3]
 
 
 
@@ -644,22 +658,33 @@ class CodexTrainer:
 
 
   def cycle_image(self):
+    message = 'Loading image...'
+    self.message2user(message)
+
     overview_mode = self.image_colors.view_selector.active==0
     self.logger.info(f'upading image in overview mode: {overview_mode}')
 
     if overview_mode:
       bbox = None
+      message += '\nOverveiw mode'
+      self.message2user(message)
     else:
       bbox = next(self.shared_var['bbox_generator'])
       self.active_bbox = bbox
 
     self.logger.info(f'Cycling image. next bbox: {bbox}')
+    message += f'\nbbox: {bbox}'
+    self.message2user(message)
 
-    rows = np.array(self.shared_var['coords'][:,0])
-    cols = np.array(self.shared_var['coords'][:,1])
+    rows = np.array(self.shared_var['coords'][:,1])
+    cols = np.array(self.shared_var['coords'][:,0])
 
+    message += f'\nReading image data\nPlease wait...'
+    self.message2user(message)
     self.current_images = pull_images(self.shared_var['image_sources'], bbox, self.logger, 
                                       resize = self.image_colors.resize.value if overview_mode else 1)
+    message += f'\nDone'
+    self.message2user(message)
 
     for i, (k,v) in enumerate(self.current_images.items()):
       self.logger.info(f'{i} image {k}: {v.shape}')
@@ -671,54 +696,112 @@ class CodexTrainer:
       self.active_bbox = [0, current_shape[0], 0, current_shape[1]]
       bbox = self.active_bbox
       self.logger.info(f'active bbox: {self.active_bbox}, bbox: {bbox}')
+      coords_adjust = 1/self.image_colors.resize.value
+    else:
+      coords_adjust = 1.
 
-    visible_cells_row = (rows > bbox[0]) & (rows < bbox[1])
-    visible_cells_col = (cols > bbox[2]) & (cols < bbox[3])
+    
+    # adjust bbox by the inverse of the dataset
+    visible_cells_row = (rows > bbox[0] * coords_adjust) & (rows < bbox[1] * coords_adjust)
+    visible_cells_col = (cols > bbox[2] * coords_adjust) & (cols < bbox[3] * coords_adjust)
     visible_cells = visible_cells_col & visible_cells_row
+    n_visible_cells = np.sum(visible_cells)
 
     self.shared_var['visible_cells'] = self.shared_var['cell_names'][visible_cells]
-
-    self.logger.info(f'region contains {np.sum(visible_cells)} cells')
-
-    x = cols[visible_cells]
-    y = rows[visible_cells]
+    self.logger.info(f'region contains {n_visible_cells} cells')
 
     coord_shift_x = bbox[2]
     coord_shift_y = bbox[0]
 
+    # x = cols[visible_cells] * coords_adjust
+    # y = rows[visible_cells] * coords_adjust
+    y = (1/coords_adjust) * (rows[visible_cells] - bbox[0])
+    x = (1/coords_adjust) * (cols[visible_cells] - bbox[2])
+    min_x_scatter, max_x_scatter = np.min(x), np.max(x)
+    min_y_scatter, max_y_scatter = np.min(y), np.max(y)
+    self.logger.info(f'scatter points: xmin {min_x_scatter} xmax {max_x_scatter}')
+    self.logger.info(f'scatter points: ymin {min_y_scatter} ymax {max_y_scatter}')
+
+    message += f'\nUpdating scatter plot'
+    self.message2user(message)
     data = dict(
-      # x = x - coord_shift_x,
-      # y = y - coord_shift_y,
-      x = rows[visible_cells] - bbox[0],
-      y = cols[visible_cells] - bbox[2],
-      s = np.zeros_like(x, dtype=np.uint8)+self.scatter_widgets.dot_size.value,
-      alpha = np.ones_like(x, dtype=np.uint8),
-      color = np.array([hex_to_dec(self.shared_var['default_dot_color'])[:3]] * np.sum(visible_cells)),
+      x = x,
+      y = y,
+      s = np.zeros(n_visible_cells, dtype=np.uint8)+self.scatter_widgets.dot_size.value,
+      alpha = np.ones(n_visible_cells, dtype=np.uint8),
+      # color = np.array([hex_to_dec(self.shared_var['default_dot_color'])[:3]] * np.sum(visible_cells)),
+      color = self._set_annotation_colors(),
       index = self.shared_var['cell_names'][visible_cells]
     )
-  # update the axis ranges to contain the whole bbox.
+    # update the axis ranges to contain the whole bbox.
 
     self.scatter_image.p.x_range.start = bbox[2] - coord_shift_x
     self.scatter_image.p.x_range.end = bbox[3] - coord_shift_x
     self.scatter_image.p.y_range.start = bbox[0] - coord_shift_y
     self.scatter_image.p.y_range.end = bbox[1] - coord_shift_y
     self.scatter_image.scatter_source.data = data
+    
+    self.shared_var['visible_cells'] = visible_cells.copy()
+    self.shared_var['active_x'] = x.copy()
+    self.shared_var['active_y'] = y.copy()
 
     self.update_image_plot()
+    message += f'\nDone'
+    self.message2user(message)
 
 
+  def _set_annotation_colors(self):
+    active_annotation = self.scatter_widgets.choose_annotation.value
+    self.logger.info(f'setting annotation: {active_annotation}')
+    
+    n_visible_cells = len(self.shared_var['visible_cells'])
+    self.logger.info(f'visible cells: {n_visible_cells}')
+
+    if active_annotation == '':
+      # colors = np.array([hex_to_dec(self.shared_var['default_dot_color'])[:3]] * n_visible_cells)*255
+      colors = np.array([self.shared_var['default_dot_color']] * n_visible_cells)
+    else:
+      colors = np.zeros((n_visible_cells,1), dtype='object')
+
+      annotation_vals = np.array(self.shared_var['cell_data'][active_annotation])
+      u_annotations = np.unique(annotation_vals)
+      self.logger.info(f'Setting annotations with categories: {u_annotations}')
+
+      # cmap = {u: AVAILABLE_COLORS[20 % i] for i, u in enumerate(u_annotations)}
+      for i,u in enumerate(u_annotations):
+        # c = hex_to_dec(AVAILABLE_COLORS[i % 20])[:3] 
+        # c = AVAILABLE_COLORS[i % 20] 
+        c = AVAILABLE_COLORS[active_annotation][u] 
+        self.logger.info(f'Setting group {u} color to {c}')
+        colors[annotation_vals == u] = c
+
+    # colors = colors * 255
+    self.logger.info(f'Colors: {colors.shape}')
+    return colors
 
 
-  # def update_scatter(self):
-  #   """ Parse all the applicable requests and update the scatter figure
-  #   """
-  #   # Do the data operations, then dispatch to a method in the ImageScatterPane class
-  #   # to handle updating the data source and redrawing
-  #   self.logger.info('Updating scatter plot')
+  def update_scatter(self):
+    """ Parse all the applicable requests and update the scatter figure
+    """
+    # Do the data operations, then dispatch to a method in the ImageScatterPane class
+    # to handle updating the data source and redrawing
+    self.logger.info('Updating scatter plot')
   #   self.get_selected_clusters()
   #   n_hl = self.shared_var['highlight_cells'].sum()
 
-  #   colors = np.array(self.shared_var['color'], dtype=object)
+    visible_cells = self.shared_var['visible_cells']
+    n_visible_cells = len(visible_cells)
+    data = dict(
+      x = self.shared_var['active_x'],
+      y = self.shared_var['active_y'],
+      s = np.zeros(n_visible_cells, dtype=np.uint8)+self.scatter_widgets.dot_size.value,
+      alpha = np.ones(n_visible_cells, dtype=np.uint8),
+      color = self._set_annotation_colors(),
+      index = self.shared_var['cell_names'][visible_cells]
+    )
+    self.scatter_image.scatter_source.data = data
+
+    # colors = np.array(self.shared_var['color'], dtype=object)
   #   colors[~self.shared_var['cluster_selection']] = self.shared_var['background_color']
   #   sizes = np.zeros_like(colors, dtype=np.uint8)+self.scatter_widgets.dot_size.value
   #   alpha = np.ones_like(sizes)
@@ -748,12 +831,12 @@ class CodexTrainer:
   #   self.reframe=False
 
   #   # Allow hiding points
-  #   if 0 in self.scatter_widgets.cluster_view_opts.active:
-  #     self.logger.info('Hiding scatter plot')
-  #     self.scatter_image.img_plot.level = 'overlay'
-  #   else:
-  #     self.logger.info('Showing scatter plot')
-  #     self.scatter_image.img_plot.level = 'underlay'
+    if 0 in self.scatter_widgets.cluster_view_opts.active:
+      self.logger.info('Hiding scatter plot')
+      self.scatter_image.img_plot.level = 'overlay'
+    else:
+      self.logger.info('Showing scatter plot')
+      self.scatter_image.img_plot.level = 'underlay'
 
 
   # def update_box_selection(self, attr, old, new):
@@ -791,6 +874,7 @@ class CodexTrainer:
 
   def update_image_plot(self):
     self.logger.info('Updating image plot')
+    message = ''
     
     use_channels = [ch for ch in self.shared_var['all_channels'] if self.image_colors.active_channels[ch]]
     images = np.dstack([self.current_images[ch] for ch in use_channels])
@@ -803,11 +887,15 @@ class CodexTrainer:
       chc = np.array(hex_to_dec(c))
       self.logger.info(f'drawing channel {ch} with color {chc}')
       colors.append(chc)
+
     colors = np.stack(colors, axis=0)
 
     saturation = []
     for i,ch in enumerate(use_channels):
       # slow, shigh = self.shared_var['saturation_vals'][ch] 
+      message += f'\nBuilding channel {ch}'
+      self.message2user(message)
+
       slow = self.image_colors.channel_low_thresholds(ch).value
       shigh = self.image_colors.channel_high_thresholds(ch).value
       if (shigh is None) or (shigh == 0):
@@ -842,6 +930,9 @@ class CodexTrainer:
     else:
       nuclei = None
       nuclei_color = None
+
+    message += f'\nBlending images'
+    self.message2user(message)
     blended = blend_images(images, saturation_vals=saturation, colors=colors, 
                            nuclei=nuclei, nuclei_color=nuclei_color)
     blended = blended[::-1,:] # flip
@@ -868,6 +959,12 @@ class CodexTrainer:
       'y0': [0],
       }
     self.scatter_image.img_plot.level = 'underlay'
+    message += f'\nImage data pushed'
+    self.message2user(message)
+
+
+  def message2user(self, message):
+    self.scatter_widgets.userfeedback.value = message
 
 
   @property

@@ -17,4 +17,4 @@ l = layout(
 )
 
 curdoc().add_root(l)
-curdoc().titl = "CODEX"
+curdoc().title = "CODEX"

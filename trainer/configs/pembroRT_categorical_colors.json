@@ -1,0 +1,47 @@
+{
+    "celltype": {
+        "Bcell": "#1f77b4",
+        "CD4T": "#ff7f0e",
+        "CD8T": "#279e68",
+        "Epithelial": "#6a24ed",
+        "Mac": "#96d468",
+        "Plasma": "#8c564b",
+        "Stromal": "#f7da97",
+        "Endothelial": "#e3091f"
+    },
+    "subtype": {
+        "Bcell": "#1f77b4",
+        "CD4T": "#ff7f0e",
+        "CD8T": "#279e68",
+        "Epithelial": "#6a24ed",
+        "Mac": "#96d468",
+        "Plasma": "#8c564b",
+        "Stromal": "#f7da97",
+        "Tfh": "#f0ac00",
+        "effector": "#f244ef",
+        "resident": "#9c3b7f",
+        "resident_cycling": "#ffbb78",
+        "treg": "#98df8a",
+        "Endothelial": "#e3091f"
+    },
+    "district": {
+        "00": "#4c4aa2",
+        "01": "#a6504e",
+        "02": "#379c70",
+        "03": "#a9a1b8",
+        "04": "#7aad41"
+    },
+    "TLS_district": {
+        "": "#ffffff",
+        "00": "#894a40",
+        "01": "#356593",
+        "02": "#c8b27d",
+        "03": "#86da78",
+        "04": "#90a936",
+        "05": "#bf65ba",
+        "06": "#7a3497",
+        "07": "#496646",
+        "08": "#5889cc",
+        "09": "#ca5b68"
+    }
+}
